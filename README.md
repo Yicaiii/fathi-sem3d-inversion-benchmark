@@ -510,21 +510,6 @@ RESULT = PASS_COMPLETE
 
 ---
 
-## 7. How to Explain the Benchmark to Others
-
-A concise explanation:
-
-> This benchmark implements one full PDE-constrained elastic inversion iteration using SEM3D.  
-> Starting from an accepted material model, it runs a strict forward simulation, compares synthetic receiver traces against observed traces, constructs residual-driven adjoint sources, runs 30 adjoint simulations, computes an Mtilde-based update direction for elastic parameters, generates line-search candidates, and accepts a candidate only if the receiver misfit decreases.  
-> The validated local transition `iter_008 -> iter_009` successfully reduced the misfit and generated a new accepted state.
-
-A more technical explanation:
-
-> The workflow is context-driven. Each transition is represented by an iteration context JSON file. The context records the parent state, output state, accepted material directory, forward workspace, residual outputs, adjoint batch paths, gradient/Mtilde outputs, candidate workspaces, and acceptance outputs.  
-> Each stage can be executed independently and audited. This makes the benchmark suitable for local reproducibility and for future task-level scheduling through PyMoniK / ArmoniK.
-
----
-
 ## 8. Does Each Iteration Update Mu and Other Parameters?
 
 Yes.
