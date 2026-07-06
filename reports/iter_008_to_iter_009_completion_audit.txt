@@ -1,0 +1,50 @@
+Transition completion audit
+===========================
+
+created = 2026-07-05T16:14:40.788730
+transition = iter_008_to_iter_009
+context = /home/crellamaybe/sem3d_fathi_clean/results/fathi_loop_v2/iter_008_to_iter_009/iter_008_to_iter_009_iteration_context.json
+
+Checks:
+  context_exists = True
+  parent_state_exists = True
+  next_state_exists = True
+  strict_forward_traces_exist = True
+  strict_forward_trace_count = 12
+  residual_h5_exists = True
+  residual_summary_pass = True
+  adjoint_prepared_30 = True
+  adjoint_prepared_count = 30
+  adjoint_with_traces_30 = True
+  adjoint_with_traces_count = 30
+  mtilde_dir_exists = True
+  mtilde_file_count = 7
+  candidates_dir_exists = True
+  candidate_file_count = 28
+  accepted_dir_exists = True
+  accepted_material_ok = True
+  prepare_strict_forward_report_result = PASS_ALREADY_EXISTS
+  strict_forward_report_result = PASS_EXECUTED
+  residual_generation_report_result = PASS_EXECUTED
+  prepare_adjoint_report_result = PASS_EXECUTED
+  all_existing_report_result = MISSING
+
+Important paths:
+  strict_forward_traces = /home/crellamaybe/sem3d_fathi_clean/data/inversion_linear/iter_009/forward_dudx_mgcap_full_batches/strict_full_forward_000/traces
+  residual_h5 = /home/crellamaybe/sem3d_fathi_clean/results/fathi_loop_v2/iter_008_to_iter_009/residual_sources/454B_strict_residual_timeseries.h5
+  residual_summary = /home/crellamaybe/sem3d_fathi_clean/results/fathi_loop_v2/iter_008_to_iter_009/residual_sources/454B_strict_residual_timeseries_summary.txt
+  adjoint_base = /home/crellamaybe/sem3d_fathi_clean/data/inversion_linear/iter_009/adjoint_full_grid_batches
+  mtilde_dir = /home/crellamaybe/sem3d_fathi_clean/results/fathi_loop_v2/iter_008_to_iter_009/mtilde_solve
+  candidates_dir = /home/crellamaybe/sem3d_fathi_clean/results/fathi_loop_v2/iter_008_to_iter_009/candidates
+  accepted_dir = /home/crellamaybe/sem3d_fathi_clean/data/inversion_linear/iter_009/accepted
+  next_state = /home/crellamaybe/sem3d_fathi_clean/results/fathi_loop_v2/states_corrected/iter_009_state_v2_corrected.npz
+
+Adjoint missing preview:
+  none
+
+Interpretation:
+  iter_008_to_iter_009 looks complete enough to be used as a trusted parent for the next iteration.
+
+json = /home/crellamaybe/sem3d_fathi_clean/benchmark_fathi_strict/reports/audit/iter_008_to_iter_009_completion_audit.json
+
+RESULT = PASS_COMPLETE

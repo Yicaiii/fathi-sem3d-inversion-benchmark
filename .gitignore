@@ -1,0 +1,43 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Logs
+*.log
+nohup.out
+logs/
+benchmark_fathi_strict/logs/
+
+# Large SEM3D outputs
+data/**/traces/
+data/**/prot/
+data/**/res/
+data/**/runtime/
+data/**/forward*/
+data/**/adjoint*/
+data/**/candidate*/
+data/**/Protection_*
+data/**/Rsem*
+data/**/capteurs*.h5
+
+# Heavy scientific files
+*.h5
+*.hdf5
+*.npy
+*.npz
+*.vtk
+*.vtu
+*.xmf
+*.xdmf
+
+# Heavy result folders
+results/**/forward*
+results/**/adjoint*
+results/**/candidate_forward_workspaces/
+results/**/runtime/
+
+# OS files
+.DS_Store
+Thumbs.db

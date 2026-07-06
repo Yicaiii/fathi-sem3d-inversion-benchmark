@@ -1,0 +1,108 @@
+from pathlib import Path
+import argparse
+import json
+from datetime import datetime
+
+ROOT = Path.home() / "sem3d_fathi_clean"
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--iter-k", type=int, required=True)
+parser.add_argument("--config", default="benchmark_fathi_strict/config/benchmark_config.json")
+parser.add_argument("--stage", default="status",
+                    choices=[
+                        "status",
+                        "plan",
+                        "setup",
+                        "forward",
+                        "residual",
+                        "prepare_adjoint",
+                        "run_adjoint",
+                        "rhs",
+                        "mtilde",
+                        "candidates",
+                        "accept",
+                        "all"
+                    ])
+parser.add_argument("--execute", action="store_true")
+args = parser.parse_args()
+
+config_path = ROOT / args.config
+config = json.loads(config_path.read_text())
+
+k = args.iter_k
+kp1 = k + 1
+transition = f"iter_{k:03d}_to_iter_{kp1:03d}"
+
+run_result_root = ROOT / config["run_result_root"] / transition
+run_data_root = ROOT / config["run_data_root"] / f"iter_{kp1:03d}"
+
+state_in = ROOT / config["state_dir"] / f"iter_{k:03d}_state_v2_corrected.npz"
+state_out = ROOT / config["state_dir"] / f"iter_{kp1:03d}_state_v2_corrected.npz"
+
+plan = {
+    "created": datetime.now().isoformat(),
+    "benchmark_name": config["benchmark_name"],
+    "iter_k": k,
+    "iter_kp1": kp1,
+    "transition": transition,
+    "execute": args.execute,
+    "stage": args.stage,
+    "paths": {
+        "state_in": str(state_in),
+        "state_out": str(state_out),
+        "run_result_root": str(run_result_root),
+        "run_data_root": str(run_data_root),
+        "true_observed_traces_dir": str(ROOT / config["true_observed_traces_dir"]),
+        "sem3d_exe": config["sem3d_exe"],
+    },
+    "pipeline": [
+        "S00 setup_context",
+        "S01 strict_forward",
+        "S02 residual_source_generation",
+        "S03 adjoint_x",
+        "S04 adjoint_y",
+        "S05 adjoint_z",
+        "S06 rhs_x",
+        "S07 rhs_y",
+        "S08 rhs_z",
+        "S09 rhs_total",
+        "S10 mtilde_solve",
+        "S11 candidate_generation",
+        "S12 candidate_forward_and_misfit",
+        "S13 accept_state"
+    ],
+    "note": "This is the generic benchmark entrypoint skeleton. It does not run SEM3D yet."
+}
+
+out_dir = ROOT / "benchmark_fathi_strict/reports"
+out_dir.mkdir(parents=True, exist_ok=True)
+out_json = out_dir / f"{transition}_generic_plan.json"
+out_txt = out_dir / f"{transition}_generic_plan.txt"
+
+out_json.write_text(json.dumps(plan, indent=2), encoding="utf-8")
+
+lines = []
+lines.append("Fathi strict benchmark generic iteration plan")
+lines.append("============================================")
+lines.append("")
+lines.append(f"created = {plan['created']}")
+lines.append(f"transition = {transition}")
+lines.append(f"stage = {args.stage}")
+lines.append(f"execute = {args.execute}")
+lines.append("")
+lines.append("Key paths:")
+for k2, v in plan["paths"].items():
+    lines.append(f"  {k2} = {v}")
+lines.append("")
+lines.append("Pipeline:")
+for s in plan["pipeline"]:
+    lines.append(f"  {s}")
+lines.append("")
+lines.append("Current meaning:")
+lines.append("  This is the future generic entrypoint.")
+lines.append("  Existing 448/449/454/455/456 scripts should be refactored behind this interface.")
+lines.append("")
+lines.append("RESULT = PASS")
+
+out_txt.write_text("\n".join(lines), encoding="utf-8")
+print("\n".join(lines))

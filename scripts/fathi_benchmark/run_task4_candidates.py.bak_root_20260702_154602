@@ -1,0 +1,158 @@
+from pathlib import Path
+from datetime import datetime
+import argparse
+import json
+import subprocess
+import sys
+
+ROOT = Path.home() / "sem3d_fathi_clean"
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--iter-k", type=int, required=True)
+parser.add_argument(
+    "--stage",
+    choices=[
+        "plan",
+        "audit_inputs",
+        "generate",
+        "audit",
+        "prepare_workspaces",
+        "all",
+    ],
+    default="plan",
+)
+parser.add_argument("--execute", action="store_true")
+parser.add_argument("--config", default="benchmark_fathi_strict/config/benchmark_config.json")
+args = parser.parse_args()
+
+k = args.iter_k
+kp1 = k + 1
+transition = f"iter_{k:03d}_to_iter_{kp1:03d}"
+
+config = json.loads((ROOT / args.config).read_text())
+run_result_root = ROOT / config["run_result_root"] / transition
+
+report_dir = ROOT / "benchmark_fathi_strict/reports/task_wrappers"
+report_dir.mkdir(parents=True, exist_ok=True)
+
+created = datetime.now().isoformat()
+
+def cmd_audit_inputs():
+    return [
+        sys.executable,
+        "scripts/iteration_engine/audit_candidate_inputs.py",
+        "--iter-k", str(k),
+    ]
+
+def cmd_generate():
+    return [
+        sys.executable,
+        "scripts/iteration_engine/generate_candidates_from_mtilde_gradient.py",
+        "--iter-k", str(k),
+    ]
+
+def cmd_audit():
+    return [
+        sys.executable,
+        "scripts/iteration_engine/audit_candidates_generic.py",
+        "--iter-k", str(k),
+    ]
+
+def cmd_prepare_workspaces():
+    return [
+        sys.executable,
+        "scripts/iteration_engine/prepare_candidate_forward_workspaces.py",
+        "--iter-k", str(k),
+    ]
+
+command_map = {
+    "audit_inputs": cmd_audit_inputs(),
+    "generate": cmd_generate(),
+    "audit": cmd_audit(),
+    "prepare_workspaces": cmd_prepare_workspaces(),
+}
+
+all_sequence = [
+    "audit_inputs",
+    "generate",
+    "audit",
+    "prepare_workspaces",
+]
+
+def run_cmd(name, cmd):
+    print("")
+    print("=" * 100)
+    print(f"TASK 4 RUNNING: {name}")
+    print("=" * 100)
+    print(" ".join(cmd))
+    print("")
+
+    proc = subprocess.run(cmd, cwd=ROOT, text=True)
+    if proc.returncode != 0:
+        print("")
+        print(f"TASK 4 FAILED: {name}")
+        print(f"returncode = {proc.returncode}")
+        sys.exit(proc.returncode)
+
+plan = {
+    "created": created,
+    "transition": transition,
+    "stage": args.stage,
+    "execute": args.execute,
+    "commands": command_map,
+    "all_sequence": all_sequence,
+    "outputs": {
+        "candidate_root": str(run_result_root / "candidates"),
+    },
+}
+
+plan_json = report_dir / f"{transition}_task4_candidates_plan.json"
+plan_txt = report_dir / f"{transition}_task4_candidates_plan.txt"
+
+lines = []
+lines.append("Canonical Task 4 candidate preparation runner")
+lines.append("=============================================")
+lines.append("")
+lines.append(f"created = {created}")
+lines.append(f"transition = {transition}")
+lines.append(f"stage = {args.stage}")
+lines.append(f"execute = {args.execute}")
+lines.append("")
+lines.append("Task 4 sequence:")
+for name in all_sequence:
+    lines.append(f"  {name}")
+lines.append("")
+lines.append("Commands:")
+for name in all_sequence:
+    lines.append("-" * 80)
+    lines.append(name)
+    lines.append("  " + " ".join(command_map[name]))
+lines.append("")
+lines.append("Outputs:")
+lines.append(f"  candidate_root = {run_result_root / 'candidates'}")
+lines.append("")
+lines.append("RESULT = PASS_PLAN")
+
+plan_json.write_text(json.dumps(plan, indent=2), encoding="utf-8")
+plan_txt.write_text("\n".join(lines), encoding="utf-8")
+
+print("\n".join(lines))
+
+if args.stage == "plan":
+    sys.exit(0)
+
+if not args.execute:
+    print("")
+    print("DRY WRAPPER ONLY.")
+    print("No command was executed because --execute was not provided.")
+    print("RESULT = PASS_DRYRUN")
+    sys.exit(0)
+
+if args.stage == "all":
+    for name in all_sequence:
+        run_cmd(name, command_map[name])
+else:
+    run_cmd(args.stage, command_map[args.stage])
+
+print("")
+print("RESULT = PASS")

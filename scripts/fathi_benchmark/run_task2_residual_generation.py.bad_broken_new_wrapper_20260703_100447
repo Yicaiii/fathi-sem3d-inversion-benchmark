@@ -1,0 +1,206 @@
+from pathlib import Path
+from datetime import datetime
+import argparse
+import json
+import subprocess
+import sys
+import os
+import re
+
+ROOT = Path(os.environ.get("FATHI_BENCHMARK_ROOT", str(Path.home() / "sem3d_fathi_clean"))).expanduser().resolve()
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--iter-k", type=int, required=True)
+parser.add_argument("--execute", action="store_true")
+parser.add_argument("--force", action="store_true")
+parser.add_argument("--config", default="benchmark_fathi_strict/config/benchmark_config.json")
+args = parser.parse_args()
+
+config = json.loads((ROOT / args.config).read_text(encoding="utf-8"))
+
+k = args.iter_k
+kp1 = k + 1
+transition = f"iter_{k:03d}_to_iter_{kp1:03d}"
+
+report_dir = ROOT / "benchmark_fathi_strict/reports/executable_tasks"
+report_dir.mkdir(parents=True, exist_ok=True)
+
+out_json = report_dir / f"{transition}_residual_generation_task.json"
+out_txt = report_dir / f"{transition}_residual_generation_task.txt"
+
+residual_dir = ROOT / config["runreport_dir.mkdir(parents=True, exist_ok=True)
+
+out_json = report_dir / f"{transition}_residual_generation_task.json"
+out_txt = report_dir / f"{transition}_residual_generation_task.txt"
+
+residual_dir = ROOT / config["run_result_root"] / transition / "residual_sources"
+h5_out = residual_dir / "454B_strict_residual_timeseries.h5"
+summary_txt = residual_dir / "454B_strict_residual_timeseries_summary.txt"
+summary_json = residual_dir / "454B_strict_residual_timeseries_summary.json"
+
+old_manifest_script = ROOT / "scripts/fathi_loop_v2/454A_compute_strict_forward_residual_manifest.py"
+old_residual_script = ROOT / "scripts/fathi_loop_v2/454B_build_strict_residual_timeseries_h5.py"
+
+created = datetime.now().isoformat()
+
+def read_text(path):
+    return path.read_text(errors="ignore") if path.exists() else ""
+
+def existing_pass():
+    txt = read_text(summary_txt)
+    if h5_out.exists() and "RESULT = PASS" in txt:
+        return True
+
+    if summary_json.exists():
+        try:
+            data = json.loads(summary_json.read_text(encoding="utf-8"))
+            if h5_out.exists() and data.get("result") == "PASS":
+                return True
+        except Exception:
+            pass
+
+    return False
+
+def extract_summary_numbers():
+    txt = read_text(summary_txt)
+    info = {}
+    for key in ["global_J", "total_J", "common_position_count", "ok_residual_count", "ok_receiver_count", "bad_count", "station_count"]:
+        m = re.search(rf"{key}\s*=\s*([^\n]+)", txt)
+        if m:
+            info[key] = m.group(1).strip()
+    return info
+
+record = {
+    "created": created,
+    "transition": transition,
+    "task_type": "residual_generation",
+    "wrapper_mode": "delegate_to_validated_iter7_scripts",
+    "iter_k": k,
+    "iter_kp1": kp1,
+    "execute": args.execute,
+    "force": args.force,
+    "old_manifest_script": str(old_manifest_script),
+    "old_residual_script": str(old_residual_script),
+    "h5_out": str(h5_out),
+    "summary_txt": str(summary_txt),
+    "summary_json": str(summary_json),
+    "result": None,
+}
+
+lines = []
+lines.append("Executable task: residual_generation")
+lines.append("====================================")
+lines.append("")
+lines.append(f"created = {created}")
+lines.append(f"transition = {transition}")
+lines.append(f"wrapper_mode = delegate_to_validated_iter7_scripts")
+lines.append(f"execute = {args.execute}")
+lines.append(f"force = {args.force}")
+lines.append("")
+lines.append("Validated old scripts:")
+lines.append(f"  {old_manifest_script}")
+lines.append(f"  {old_residual_script}")
+lines.append("")
+lines.append(f"h5_out = {h5_out}")
+lines.append(f"summary_txt = {summary_txt}")
+lines.append("")
+
+if k != 7:
+    record["result"] = "FAIL_UNSUPPORTED_ITER_FOR_OLD_VALIDATED_WRAPPER"
+    lines.append("This thin wrapper currently delegates to the validated iter_007 -> iter_008 scripts only.")
+    lines.append("For other iterations, the old scripts must first be parameterized safely.")
+
+elif not old_manifest_script.exists() or not old_residual_script.exists():
+    record["result"] = "FAIL_MISSING_VALIDATED_OLD_SCRIPT"
+    lines.append("Missing one of the validated old residual scripts.")
+
+elif existing_pass() and not args.force:
+    record["result"] = "PASS_ALREADY_EXISTS"
+    record["summary_numbers"] = extract_summary_numbers()
+    lines.append("Existing residual output is already PASS.")
+    lines.append("No residual regeneration was performed.")
+    for kk, vv in record["summary_numbers"].items():
+        lines.append(f"{kk} = {vv}")
+
+elif not args.execute:
+    record["result"] = "PASS_PLAN_ONLY"
+    lines.append("Plan only. Would call validated old scripts:")
+    lines.append(f"  python3 {old_manifest_script.relative_to(ROOT)}")
+    lines.append(f"  python3 {old_residual_script.relative_to(ROOT)}")
+
+else:
+    env = os.environ.copy()
+    env["FATHI_BENCHMARK_ROOT"] = str(ROOT)
+
+    commands = [
+        [sys.executable, str(old_manifest_script.relative_to(ROOT))],
+        [sys.executable, str(old_residual_script.relative_to(ROOT))],
+    ]
+
+    proc_records = []
+    ok = True
+
+    for cmd in commands:
+        lines.append("")
+        lines.append("Running:")
+        lines.append("  " + " ".join(cmd))
+
+        proc = subprocess.run(
+            cmd,
+            cwd=ROOT,
+            env=env,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+        stdout_tail = proc.stdout.splitlines()[-80:]
+        stderr_tail = proc.stderr.splitlines()[-80:]
+
+        proc_records.append({
+            "cmd": cmd,
+            "returncode": proc.returncode,
+            "stdout_tail": stdout_tail,
+            "stderr_tail": stderr_tail,
+        })
+
+        lines.append(f"returncode = {proc.returncode}")
+        lines.append("stdout tail:")
+        for x in stdout_tail:
+            lines.append("  " + x)
+
+        if stderr_tail:
+            lines.append("stderr tail:")
+            for x in stderr_tail:
+                lines.append("  " + x)
+
+        if proc.returncode != 0:
+            ok = False
+            break
+
+    record["old_script_runs"] = proc_records
+
+    if ok and existing_pass():
+        record["result"] = "PASS_EXECUTED"
+        record["summary_numbers"] = extract_summary_numbers()
+        lines.append("")
+        lines.append("Validated old residual scripts executed successfully.")
+        for kk, vv in record["summary_numbers"].items():
+            lines.append(f"{kk} = {vv}")
+    else:
+        record["result"] = "FAIL_OLD_SCRIPT_OUTPUT_NOT_PASS"
+        lines.append("")
+        lines.append("Old residual scripts ran, but final residual summary is not PASS.")
+
+lines.append("")
+lines.append(f"json = {out_json}")
+lines.append("")
+lines.append(f"RESULT = {record['result']}")
+
+out_json.write_text(json.dumps(record, indent=2), encoding="utf-8")
+out_txt.write_text("\n".join(lines), encoding="utf-8")
+
+print("\n".join(lines))
+
+if record["result"].startswith("FAIL"):
+    sys.exit(1)

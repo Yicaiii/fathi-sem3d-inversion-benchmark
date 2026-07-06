@@ -1,0 +1,379 @@
+from pathlib import Path
+from datetime import datetime
+import argparse
+import csv
+import json
+import re
+import sys
+import os
+
+import h5py
+import numpy as np
+
+ROOT = Path(os.environ.get("FATHI_BENCHMARK_ROOT", str(Path.home() / "sem3d_fathi_clean"))).expanduser().resolve()
+UU_RE = re.compile(r"^UU_\d+$")
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--iter-k", type=int, required=True)
+parser.add_argument("--execute", action="store_true")
+parser.add_argument("--force", action="store_true")
+parser.add_argument("--round-decimals", type=int, default=8)
+parser.add_argument("--config", default="benchmark_fathi_strict/config/benchmark_config.json")
+args = parser.parse_args()
+
+config = json.loads((ROOT / args.config).read_text(encoding="utf-8"))
+
+k = args.iter_k
+kp1 = k + 1
+transition = f"iter_{k:03d}_to_iter_{kp1:03d}"
+
+run_data_root = ROOT / config["run_data_root"] / f"iter_{kp1:03d}"
+run_result_root = ROOT / config["run_result_root"] / transition
+
+true_trace_dir = ROOT / config["true_observed_traces_dir"]
+synthetic_trace_dir = run_data_root / "forward_dudx_mgcap_full_batches/strict_full_forward_000/traces"
+
+out_dir = run_result_root / "residual_sources"
+out_dir.mkdir(parents=True, exist_ok=True)
+
+h5_out = out_dir / "454B_strict_residual_timeseries.h5"
+summary_json = out_dir / "454B_strict_residual_timeseries_summary.json"
+summary_txt = out_dir / "454B_strict_residual_timeseries_summary.txt"
+csv_out = out_dir / "454B_strict_residual_by_receiver.csv"
+
+report_dir = ROOT / "benchmark_fathi_strict/reports/executable_tasks"
+report_dir.mkdir(parents=True, exist_ok=True)
+
+def integrate_trapezoid(y, x):
+    if hasattr(np, "trapezoid"):
+        return np.trapezoid(y, x)
+    return np.trapz(y, x)
+
+def pos_key(pos):
+    return tuple(round(float(x), args.round_decimals) for x in pos)
+
+def sorted_uu_keys(h):
+    keys = [k for k in h.keys() if UU_RE.match(k)]
+    return sorted(keys, key=lambda x: int(x.split("_")[1]))
+
+def build_position_map(trace_dir):
+    mp = {}
+    dup = 0
+    file_count = len(list(trace_dir.glob("capteurs.*.h5"))) if trace_dir.exists() else 0
+
+    for f in sorted(trace_dir.glob("capteurs.*.h5")):
+        with h5py.File(f, "r") as h:
+            for key in sorted_uu_keys(h):
+                pos_name = key + "_pos"
+                if pos_name not in h:
+                    continue
+                pos = np.asarray(h[pos_name], dtype=np.float64).reshape(-1)
+                if pos.size < 3:
+                    continue
+                kpos = pos_key(pos[:3])
+                if kpos in mp:
+                    dup += 1
+                    continue
+                mp[kpos] = {
+                    "trace_file": f,
+                    "receiver_key": key,
+                    "position": np.asarray(pos[:3], dtype=np.float64),
+                    "shape": tuple(h[key].shape),
+                }
+
+    return mp, dup, file_count
+
+def read_time_and_disp(entry):
+    with h5py.File(entry["trace_file"], "r") as h:
+        arr = np.asarray(h[entry["receiver_key"]], dtype=np.float64)
+
+    if arr.ndim != 2 or arr.shape[1] < 4:
+        raise RuntimeError(f"Bad trace shape: {arr.shape}")
+
+    t = arr[:, 0]
+    u = arr[:, 1:4]
+
+    if not np.all(np.isfinite(t)):
+        raise RuntimeError("Non-finite time")
+    if not np.all(np.isfinite(u)):
+        raise RuntimeError("Non-finite displacement")
+    if np.any(np.diff(t) <= 0):
+        raise RuntimeError("Time is not strictly increasing")
+
+    return t, u
+
+def interp_to_true(t_true, t_syn, u_syn):
+    out = np.empty((len(t_true), 3), dtype=np.float64)
+    for j in range(3):
+        out[:, j] = np.interp(t_true, t_syn, u_syn[:, j])
+    return out
+
+created = datetime.now().isoformat()
+
+required_dirs = [true_trace_dir, synthetic_trace_dir]
+missing = [p for p in required_dirs if not p.exists()]
+
+record = {
+    "created": created,
+    "transition": transition,
+    "task_type": "residual_generation",
+    "iter_k": k,
+    "iter_kp1": kp1,
+    "true_trace_dir": str(true_trace_dir),
+    "synthetic_trace_dir": str(synthetic_trace_dir),
+    "h5_out": str(h5_out),
+    "summary_json": str(summary_json),
+    "execute": args.execute,
+    "force": args.force,
+    "missing": [str(p) for p in missing],
+    "result": None,
+}
+
+lines = []
+lines.append("Executable task: residual_generation")
+lines.append("====================================")
+lines.append("")
+lines.append(f"created = {created}")
+lines.append(f"transition = {transition}")
+lines.append(f"true_trace_dir = {true_trace_dir}")
+lines.append(f"synthetic_trace_dir = {synthetic_trace_dir}")
+lines.append(f"h5_out = {h5_out}")
+lines.append(f"execute = {args.execute}")
+lines.append(f"force = {args.force}")
+lines.append("")
+
+if missing:
+    record["result"] = "FAIL_MISSING_INPUTS"
+    lines.append("Missing required inputs:")
+    for p in missing:
+        lines.append(f"  {p}")
+
+elif h5_out.exists() and not args.force:
+    # Idempotent branch:
+    # trust the residual H5 itself, not only the summary json.
+    try:
+        with h5py.File(h5_out, "r") as h:
+            attrs = dict(h.attrs)
+            receiver_count = len(h["receivers"].keys()) if "receivers" in h else None
+
+        station_count = int(attrs.get("station_count", receiver_count if receiver_count is not None else -1))
+        bad_count = int(attrs.get("bad_count", 0))
+        global_J = float(attrs.get("global_J", np.nan))
+        total_n_values = int(attrs.get("total_n_values", -1))
+
+        ok_existing = (
+            receiver_count == 225
+            and station_count == 225
+            and bad_count == 0
+            and np.isfinite(global_J)
+            and global_J > 0
+        )
+
+        record.update({
+            "receiver_count": receiver_count,
+            "station_count": station_count,
+            "bad_count": bad_count,
+            "global_J": global_J,
+            "total_n_values": total_n_values,
+        })
+
+    except Exception as e:
+        ok_existing = False
+        record["existing_h5_error"] = repr(e)
+
+    if ok_existing:
+        record["result"] = "PASS_ALREADY_EXISTS"
+        lines.append("Residual H5 already exists and passed H5-level audit.")
+        lines.append("No residual regeneration was performed.")
+        lines.append(f"receiver_count = {record.get('receiver_count')}")
+        lines.append(f"station_count = {record.get('station_count')}")
+        lines.append(f"global_J = {record.get('global_J'):.16e}")
+        lines.append(f"bad_count = {record.get('bad_count')}")
+    else:
+        record["result"] = "FAIL_EXISTING_H5_AUDIT"
+        lines.append("Residual H5 exists but failed H5-level audit.")
+        lines.append("Use --force --execute to regenerate.")
+        if "existing_h5_error" in record:
+            lines.append(f"existing_h5_error = {record['existing_h5_error']}")
+
+elif not args.execute:
+    record["result"] = "PASS_PLAN_ONLY"
+    lines.append("Plan only. Residual will not be regenerated.")
+    lines.append("Use --execute to generate residual outputs.")
+
+else:
+    true_map, true_dup, true_file_count = build_position_map(true_trace_dir)
+    syn_map, syn_dup, syn_file_count = build_position_map(synthetic_trace_dir)
+
+    common = sorted(set(true_map.keys()) & set(syn_map.keys()))
+    rows = []
+    bad = []
+    total_J = 0.0
+    total_n_values = 0
+
+    if h5_out.exists():
+        h5_out.unlink()
+
+    with h5py.File(h5_out, "w") as h5:
+        h5.attrs["created"] = created
+        h5.attrs["transition"] = transition
+        h5.attrs["residual_definition"] = "synthetic_minus_true"
+        h5.attrs["time_rule"] = "synthetic_interpolated_to_true_time_grid"
+
+        g = h5.create_group("receivers")
+
+        for idx, kpos in enumerate(common):
+            te = true_map[kpos]
+            se = syn_map[kpos]
+            name = f"receiver_{idx:04d}"
+
+            try:
+                t_true, u_true = read_time_and_disp(te)
+                t_syn, u_syn = read_time_and_disp(se)
+                u_syn_i = interp_to_true(t_true, t_syn, u_syn)
+
+                residual = u_syn_i - u_true
+                residual_rev = residual[::-1].copy()
+                time_rev = t_true[::-1].copy()
+
+                integrand = np.sum(residual * residual, axis=1)
+                J = 0.5 * float(integrate_trapezoid(integrand, t_true))
+
+                rg = g.create_group(name)
+                rg.attrs["x"] = float(kpos[0])
+                rg.attrs["y"] = float(kpos[1])
+                rg.attrs["z"] = float(kpos[2])
+                rg.attrs["true_file"] = str(te["trace_file"].relative_to(ROOT))
+                rg.attrs["true_key"] = te["receiver_key"]
+                rg.attrs["synthetic_file"] = str(se["trace_file"].relative_to(ROOT))
+                rg.attrs["synthetic_key"] = se["receiver_key"]
+                rg.attrs["J"] = J
+
+                rg.create_dataset("position", data=np.asarray(kpos, dtype=np.float64))
+                rg.create_dataset("time_true_grid", data=t_true)
+                rg.create_dataset("time_reversed_grid", data=time_rev)
+                rg.create_dataset("true_displacement_xyz", data=u_true)
+                rg.create_dataset("synthetic_displacement_interp_xyz", data=u_syn_i)
+                rg.create_dataset("residual_forward_time_xyz", data=residual)
+                rg.create_dataset("residual_time_reversed_xyz", data=residual_rev)
+                rg.create_dataset("source_plus_time_reversed_xyz", data=residual_rev)
+                rg.create_dataset("source_minus_time_reversed_xyz", data=-residual_rev)
+
+                rows.append({
+                    "receiver": name,
+                    "x": kpos[0],
+                    "y": kpos[1],
+                    "z": kpos[2],
+                    "J": J,
+                    "n_true": len(t_true),
+                    "n_syn": len(t_syn),
+                    "true_file": str(te["trace_file"].relative_to(ROOT)),
+                    "true_key": te["receiver_key"],
+                    "synthetic_file": str(se["trace_file"].relative_to(ROOT)),
+                    "synthetic_key": se["receiver_key"],
+                })
+
+                total_J += J
+                total_n_values += int(residual.size)
+
+            except Exception as e:
+                bad.append({
+                    "position": kpos,
+                    "true": str(te),
+                    "synthetic": str(se),
+                    "error": repr(e),
+                })
+
+        h5.attrs["station_count"] = len(rows)
+        h5.attrs["bad_count"] = len(bad)
+        h5.attrs["global_J"] = total_J
+        h5.attrs["total_n_values"] = total_n_values
+
+    with csv_out.open("w", newline="", encoding="utf-8") as f:
+        fieldnames = [
+            "receiver", "x", "y", "z", "J", "n_true", "n_syn",
+            "true_file", "true_key", "synthetic_file", "synthetic_key"
+        ]
+        w = csv.DictWriter(f, fieldnames=fieldnames)
+        w.writeheader()
+        w.writerows(rows)
+
+    ok = len(common) == 225 and len(rows) == 225 and len(bad) == 0 and np.isfinite(total_J)
+
+    record.update({
+        "true_file_count": true_file_count,
+        "synthetic_file_count": syn_file_count,
+        "true_count": len(true_map),
+        "synthetic_count": len(syn_map),
+        "common_position_count": len(common),
+        "ok_receiver_count": len(rows),
+        "bad_count": len(bad),
+        "bad_preview": bad[:10],
+        "global_J": total_J,
+        "total_n_values": total_n_values,
+        "csv": str(csv_out),
+        "result": "PASS" if ok else "CHECK_NEEDED",
+    })
+
+    lines.append("Counts:")
+    lines.append(f"  true_file_count = {true_file_count}")
+    lines.append(f"  synthetic_file_count = {syn_file_count}")
+    lines.append(f"  true_count = {len(true_map)}")
+    lines.append(f"  synthetic_count = {len(syn_map)}")
+    lines.append(f"  common_position_count = {len(common)}")
+    lines.append(f"  ok_receiver_count = {len(rows)}")
+    lines.append(f"  bad_count = {len(bad)}")
+    lines.append("")
+    lines.append("Residual:")
+    lines.append(f"  global_J = {total_J:.16e}")
+    lines.append(f"  total_n_values = {total_n_values}")
+
+# For existing PASS branch, load previous summary into record if possible
+if record["result"] == "PASS_ALREADY_EXISTS":
+    old = json.loads(summary_json.read_text(encoding="utf-8"))
+    for key in ["global_J", "total_J", "common_position_count", "ok_receiver_count", "bad_count", "total_n_values"]:
+        if key in old:
+            record[key] = old[key]
+
+# Normalize PASS names
+if record["result"] in ["PASS", "PASS_ALREADY_EXISTS"]:
+    summary_result = "PASS"
+else:
+    summary_result = record["result"]
+
+record["summary_result"] = summary_result
+
+summary_json.write_text(json.dumps(record, indent=2), encoding="utf-8")
+
+summary_lines = []
+summary_lines.append("Strict residual generation summary")
+summary_lines.append("==================================")
+summary_lines.append("")
+summary_lines.append(f"created = {created}")
+summary_lines.append(f"transition = {transition}")
+summary_lines.append(f"h5 = {h5_out}")
+summary_lines.append(f"global_J = {record.get('global_J', record.get('total_J', None))}")
+summary_lines.append(f"common_position_count = {record.get('common_position_count', None)}")
+summary_lines.append(f"ok_receiver_count = {record.get('ok_receiver_count', None)}")
+summary_lines.append(f"bad_count = {record.get('bad_count', None)}")
+summary_lines.append("")
+summary_lines.append(f"RESULT = {summary_result}")
+summary_txt.write_text("\n".join(summary_lines), encoding="utf-8")
+
+out_json = report_dir / f"{transition}_residual_generation_task.json"
+out_txt = report_dir / f"{transition}_residual_generation_task.txt"
+
+lines.append("")
+lines.append(f"summary_json = {summary_json}")
+lines.append(f"summary_txt = {summary_txt}")
+lines.append(f"json = {out_json}")
+lines.append("")
+lines.append(f"RESULT = {record['result']}")
+
+out_json.write_text(json.dumps(record, indent=2), encoding="utf-8")
+out_txt.write_text("\n".join(lines), encoding="utf-8")
+
+print("\n".join(lines))
+
+if record["result"].startswith("FAIL") or record["result"] in ["CHECK_NEEDED", "CHECK_EXISTING_SUMMARY_NOT_PASS"]:
+    sys.exit(1)

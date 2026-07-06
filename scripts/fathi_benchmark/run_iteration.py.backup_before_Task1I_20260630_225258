@@ -1,0 +1,324 @@
+from pathlib import Path
+import argparse
+import json
+import subprocess
+import sys
+from datetime import datetime
+
+ROOT = Path.home() / "sem3d_fathi_clean"
+
+def run_cmd(cmd, *, cwd=ROOT):
+    proc = subprocess.run(
+        cmd,
+        cwd=cwd,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    return proc
+
+def write_text(path, lines):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--iter-k", type=int, required=True)
+parser.add_argument("--config", default="benchmark_fathi_strict/config/benchmark_config.json")
+parser.add_argument(
+    "--stage",
+    default="status",
+    choices=[
+        "status",
+        "plan",
+        "setup",
+        "forward",
+        "residual",
+        "prepare_adjoint",
+        "run_adjoint",
+        "rhs",
+        "mtilde",
+        "candidates",
+        "accept",
+        "all",
+    ],
+)
+parser.add_argument("--execute", action="store_true")
+args = parser.parse_args()
+
+config_path = ROOT / args.config
+if not config_path.exists():
+    print(f"Missing config: {config_path}")
+    sys.exit(1)
+
+config = json.loads(config_path.read_text())
+
+k = args.iter_k
+kp1 = k + 1
+transition = f"iter_{k:03d}_to_iter_{kp1:03d}"
+
+run_result_root = ROOT / config["run_result_root"] / transition
+run_data_root = ROOT / config["run_data_root"] / f"iter_{kp1:03d}"
+
+state_in = ROOT / config["state_dir"] / f"iter_{k:03d}_state_v2_corrected.npz"
+state_out = ROOT / config["state_dir"] / f"iter_{kp1:03d}_state_v2_corrected.npz"
+
+report_dir = ROOT / "benchmark_fathi_strict/reports/generic_runs"
+report_dir.mkdir(parents=True, exist_ok=True)
+
+out_json = report_dir / f"{transition}_{args.stage}_run_iteration.json"
+out_txt = report_dir / f"{transition}_{args.stage}_run_iteration.txt"
+
+record = {
+    "created": datetime.now().isoformat(),
+    "benchmark_name": config["benchmark_name"],
+    "iter_k": k,
+    "iter_kp1": kp1,
+    "transition": transition,
+    "stage": args.stage,
+    "execute": args.execute,
+    "paths": {
+        "state_in": str(state_in),
+        "state_out": str(state_out),
+        "run_result_root": str(run_result_root),
+        "run_data_root": str(run_data_root),
+        "true_observed_traces_dir": str(ROOT / config["true_observed_traces_dir"]),
+        "sem3d_exe": config["sem3d_exe"],
+    },
+    "stage_result": None,
+    "called_command": None,
+    "stdout": "",
+    "stderr": "",
+    "returncode": None,
+}
+
+lines = []
+lines.append("Fathi strict benchmark generic run_iteration")
+lines.append("============================================")
+lines.append("")
+lines.append(f"created = {record['created']}")
+lines.append(f"transition = {transition}")
+lines.append(f"stage = {args.stage}")
+lines.append(f"execute = {args.execute}")
+lines.append("")
+lines.append("Derived paths:")
+for kk, vv in record["paths"].items():
+    lines.append(f"  {kk} = {vv}")
+lines.append("")
+
+if args.stage in ["status", "plan"]:
+    record["stage_result"] = "PASS"
+    lines.append("Pipeline:")
+    lines.append("  S00 setup_context")
+    lines.append("  S01 strict_forward")
+    lines.append("  S02 residual_source_generation")
+    lines.append("  S03 adjoint_x")
+    lines.append("  S04 adjoint_y")
+    lines.append("  S05 adjoint_z")
+    lines.append("  S06 rhs_x")
+    lines.append("  S07 rhs_y")
+    lines.append("  S08 rhs_z")
+    lines.append("  S09 rhs_total")
+    lines.append("  S10 mtilde_solve")
+    lines.append("  S11 candidate_generation")
+    lines.append("  S12 candidate_forward_and_misfit")
+    lines.append("  S13 accept_state")
+    lines.append("")
+    lines.append("Meaning:")
+    lines.append("  This is the generic benchmark entrypoint.")
+    lines.append("  Use --stage forward to check the forward stage through the generic wrapper.")
+
+elif args.stage == "forward":
+    # Task 1B:
+    # Connect generic run_iteration.py to Task 1A forward_batch_generic.py.
+    # This does NOT run SEM3D. It only checks/recognizes the existing forward stage.
+    if args.execute:
+        lines.append("WARNING:")
+        lines.append("  --execute was provided, but Task 1B forward integration is status-only.")
+        lines.append("  SEM3D will NOT be launched from run_iteration.py yet.")
+        lines.append("  Heavy execution remains disabled until the generic forward executor is explicitly implemented.")
+        lines.append("")
+
+    cmd = [
+        sys.executable,
+        "scripts/iteration_engine/forward_batch_generic.py",
+        "--iter-k",
+        str(k),
+        "--mode",
+        "status",
+    ]
+
+    record["called_command"] = cmd
+    lines.append("Calling forward stage wrapper:")
+    lines.append("  " + " ".join(cmd))
+    lines.append("")
+
+    proc = run_cmd(cmd)
+    record["returncode"] = proc.returncode
+    record["stdout"] = proc.stdout
+    record["stderr"] = proc.stderr
+
+    if proc.returncode == 0 and "RESULT = PASS" in proc.stdout:
+        record["stage_result"] = "PASS"
+    else:
+        record["stage_result"] = "FAIL"
+
+    lines.append("Forward wrapper stdout:")
+    lines.append(proc.stdout.rstrip() if proc.stdout.strip() else "  <empty>")
+    lines.append("")
+    if proc.stderr.strip():
+        lines.append("Forward wrapper stderr:")
+        lines.append(proc.stderr.rstrip())
+        lines.append("")
+
+elif args.stage == "residual":
+    # Task 1C:
+    # Connect generic run_iteration.py to residual_generic.py.
+    # This does NOT recompute residuals. It only checks/recognizes the existing residual stage.
+    if args.execute:
+        lines.append("WARNING:")
+        lines.append("  --execute was provided, but Task 1C residual integration is status-only.")
+        lines.append("  Residual recomputation will NOT be launched from run_iteration.py yet.")
+        lines.append("  Heavy or destructive execution remains disabled until explicitly implemented.")
+        lines.append("")
+
+    cmd = [
+        sys.executable,
+        "scripts/iteration_engine/residual_generic.py",
+        "--iter-k",
+        str(k),
+        "--mode",
+        "status",
+    ]
+
+    record["called_command"] = cmd
+    lines.append("Calling residual stage wrapper:")
+    lines.append("  " + " ".join(cmd))
+    lines.append("")
+
+    proc = run_cmd(cmd)
+    record["returncode"] = proc.returncode
+    record["stdout"] = proc.stdout
+    record["stderr"] = proc.stderr
+
+    if proc.returncode == 0 and "RESULT = PASS" in proc.stdout:
+        record["stage_result"] = "PASS"
+    else:
+        record["stage_result"] = "FAIL"
+
+    lines.append("Residual wrapper stdout:")
+    lines.append(proc.stdout.rstrip() if proc.stdout.strip() else "  <empty>")
+    lines.append("")
+    if proc.stderr.strip():
+        lines.append("Residual wrapper stderr:")
+        lines.append(proc.stderr.rstrip())
+        lines.append("")
+
+elif args.stage == "prepare_adjoint":
+    # Task 1D:
+    # Connect generic run_iteration.py to prepare_adjoint_generic.py.
+    # This does NOT run SEM3D. It only checks/recognizes prepared x/y/z adjoint batches.
+    if args.execute:
+        lines.append("WARNING:")
+        lines.append("  --execute was provided, but Task 1D prepare_adjoint integration is status-only.")
+        lines.append("  Adjoint SEM3D execution will NOT be launched from this stage.")
+        lines.append("")
+
+    cmd = [
+        sys.executable,
+        "scripts/iteration_engine/prepare_adjoint_generic.py",
+        "--iter-k",
+        str(k),
+        "--mode",
+        "status",
+    ]
+
+    record["called_command"] = cmd
+    lines.append("Calling prepare_adjoint stage wrapper:")
+    lines.append("  " + " ".join(cmd))
+    lines.append("")
+
+    proc = run_cmd(cmd)
+    record["returncode"] = proc.returncode
+    record["stdout"] = proc.stdout
+    record["stderr"] = proc.stderr
+
+    if proc.returncode == 0 and "RESULT = PASS" in proc.stdout:
+        record["stage_result"] = "PASS"
+    else:
+        record["stage_result"] = "FAIL"
+
+    lines.append("Prepare_adjoint wrapper stdout:")
+    lines.append(proc.stdout.rstrip() if proc.stdout.strip() else "  <empty>")
+    lines.append("")
+    if proc.stderr.strip():
+        lines.append("Prepare_adjoint wrapper stderr:")
+        lines.append(proc.stderr.rstrip())
+        lines.append("")
+
+elif args.stage == "run_adjoint":
+    # Task 1E:
+    # Connect run_iteration.py to run_adjoint_generic.py.
+    # Status-only. It does NOT run the 30 heavy SEM3D adjoint batches.
+    if args.execute:
+        lines.append("WARNING:")
+        lines.append("  --execute was provided, but Task 1E run_adjoint integration is status-only.")
+        lines.append("  Heavy adjoint execution will NOT be launched from run_iteration.py yet.")
+        lines.append("  Use the printed resume command after checking status.")
+        lines.append("")
+
+    cmd = [
+        sys.executable,
+        "scripts/iteration_engine/run_adjoint_generic.py",
+        "--iter-k",
+        str(k),
+        "--mode",
+        "status",
+    ]
+
+    record["called_command"] = cmd
+    lines.append("Calling run_adjoint stage wrapper:")
+    lines.append("  " + " ".join(cmd))
+    lines.append("")
+
+    proc = run_cmd(cmd)
+    record["returncode"] = proc.returncode
+    record["stdout"] = proc.stdout
+    record["stderr"] = proc.stderr
+
+    if proc.returncode == 0 and "RESULT = PASS" in proc.stdout:
+        record["stage_result"] = "PASS"
+    else:
+        record["stage_result"] = "FAIL"
+
+    lines.append("Run_adjoint wrapper stdout:")
+    lines.append(proc.stdout.rstrip() if proc.stdout.strip() else "  <empty>")
+    lines.append("")
+    if proc.stderr.strip():
+        lines.append("Run_adjoint wrapper stderr:")
+        lines.append(proc.stderr.rstrip())
+        lines.append("")
+
+else:
+    record["stage_result"] = "NOT_IMPLEMENTED_YET"
+    lines.append(f"Stage {args.stage} is not connected yet.")
+    lines.append("")
+    lines.append("Next implementation order:")
+    lines.append("  1. forward: DONE")
+    lines.append("  2. residual: DONE")
+    lines.append("  3. prepare_adjoint: DONE")
+    lines.append("  4. run_adjoint: DONE_STATUS_ONLY")
+    lines.append("  5. rhs")
+    lines.append("  6. mtilde")
+    lines.append("  7. candidates")
+    lines.append("  8. accept")
+
+lines.append("")
+lines.append(f"RESULT = {record['stage_result']}")
+
+out_json.write_text(json.dumps(record, indent=2), encoding="utf-8")
+write_text(out_txt, lines)
+
+print("\n".join(lines))
+
+if record["stage_result"] not in ["PASS", "NOT_IMPLEMENTED_YET"]:
+    sys.exit(1)

@@ -1,0 +1,9 @@
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path.cwd()
+adapter = ROOT / "scripts/fathi_benchmark/run_task2_residual_generation_legacy_adapter.sh"
+
+cmd = ["bash", str(adapter)] + sys.argv[1:]
+sys.exit(subprocess.call(cmd, cwd=ROOT))

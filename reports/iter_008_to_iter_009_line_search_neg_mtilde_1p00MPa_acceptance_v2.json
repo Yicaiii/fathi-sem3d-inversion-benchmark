@@ -1,0 +1,19 @@
+{
+  "created": "2026-07-05T00:21:07.361996",
+  "transition": "iter_008_to_iter_009",
+  "candidate": "line_search_neg_mtilde_1p00MPa",
+  "force": false,
+  "state_out": "/home/crellamaybe/sem3d_fathi_clean/results/fathi_loop_v2/states_corrected/iter_009_state_v2_corrected.npz",
+  "accepted_dir": "/home/crellamaybe/sem3d_fathi_clean/data/inversion_linear/iter_009/accepted",
+  "misfit_summary": "/home/crellamaybe/sem3d_fathi_clean/results/fathi_loop_v2/iter_008_to_iter_009/candidate_misfits/line_search_neg_mtilde_1p00MPa_misfit_summary_v2.json",
+  "missing": [],
+  "result": "PASS_ACCEPTED",
+  "parent_J": 3.826397231223554e-19,
+  "candidate_J": 3.8259162917013906e-19,
+  "delta_J": -4.8093952216354196e-23,
+  "descent": true,
+  "parent_J_source": "/home/crellamaybe/sem3d_fathi_clean/results/fathi_loop_v2/iter_008_to_iter_009/residual_sources/454B_strict_residual_timeseries_summary.txt",
+  "finite_ok": true,
+  "positive_ok": true,
+  "accepted_summary": "/home/crellamaybe/sem3d_fathi_clean/data/inversion_linear/iter_009/accepted/accepted_summary.txt"
+}
