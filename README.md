@@ -893,3 +893,28 @@ Result:
 Next engineering goal:
   connect the validated context-driven task graph to PyMoniK / ArmoniK
 ```
+
+---
+
+## Canonical Fathi 80 MPa initialization
+
+The strict Fathi validation starts from a homogeneous model with
+lambda = mu = 80 MPa, Kappa = 133.333333 MPa and density = 2000
+kg/m3.
+
+The canonical forward operator contains nine vertical impulse sources
+on a 3 x 3 surface grid. The observed objective uses 225 physical
+receivers, while the forward/adjoint gradient workflow uses 38,440
+full-grid stations.
+
+Strict-forward preparation automatically preserves the source
+operator from the accepted parent model. A full-grid receiver
+template is never allowed to replace the nine-source operator.
+
+See:
+
+- `docs/FATHI80_INITIAL.md`
+- `docs/TV_REGULARIZATION_WORKFLOW.md`
+
+Large SEM3D traces, snapshots and inversion workspaces are local
+runtime data and are not stored in Git.
