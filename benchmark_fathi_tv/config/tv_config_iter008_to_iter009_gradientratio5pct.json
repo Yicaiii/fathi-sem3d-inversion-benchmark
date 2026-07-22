@@ -1,0 +1,30 @@
+{
+  "transition": "iter_008_to_iter_009",
+  "parent_state": "results/fathi_loop_v2/states_corrected/iter_008_state_v2_corrected.npz",
+  "baseline_transition_dir": "results/fathi_loop_v2/iter_008_to_iter_009",
+  "tv_transition_dir": "results/fathi_loop_tv_v1/iter_008_to_iter_009",
+  "full_mtilde": "results/audit_teacher_feedback/iter005_mass_matrix/Mtilde_q1_consistent_sparse.npz",
+  "active_indices": "results/fathi_loop_v2/iter_008_to_iter_009/mtilde_solve/Mtilde_q1_consistent_interior_38440_indices.npy",
+  "active_coords": "results/fathi_loop_v2/iter_008_to_iter_009/mtilde_solve/Mtilde_q1_consistent_interior_38440_coords.npy",
+  "data_rhs_lambda": "results/fathi_loop_v2/iter_008_to_iter_009/component_rhs/full_grid_trace_RHS_total_lambda.npy",
+  "data_rhs_mu": "results/fathi_loop_v2/iter_008_to_iter_009/component_rhs/full_grid_trace_RHS_total_mu.npy",
+  "mesh": {
+    "nx": 33,
+    "ny": 33,
+    "nz": 41,
+    "array_order": "field[iz, iy, ix]",
+    "flatten_order": "C",
+    "fastest_axis": "x"
+  },
+  "parameter_scaling": {
+    "mode": "median_parent",
+    "lambda_reference_pa": 100000000.0,
+    "mu_reference_pa": 100000000.0
+  },
+  "tv": {
+    "type": "smoothed_isotropic_q1",
+    "epsilon_dimensionless": 0.001,
+    "alpha_lambda": 4.264222450430098e-22,
+    "alpha_mu": 3.2081832186255045e-21
+  }
+}

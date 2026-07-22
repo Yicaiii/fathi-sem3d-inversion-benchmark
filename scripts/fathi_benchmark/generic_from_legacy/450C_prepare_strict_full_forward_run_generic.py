@@ -59,7 +59,7 @@ def copy_current_material(dst):
     for name in ["Mat_0_Kappa.h5", "Mat_0_Mu.h5", "Mat_0_Density.h5"]:
         src = src_h5 / name
         if not src.exists():
-            raise RuntimeError(f"Missing iter007 accepted material: {src}")
+            raise RuntimeError(f"Missing current accepted material: {src}")
         shutil.copy2(src, dst_h5 / name)
 
 def hardcoded_hits(d):
@@ -102,12 +102,12 @@ def main():
 
     marker = {
         "created": datetime.now().isoformat(),
-        "purpose": "strict iter007->iter008 full forward run",
+        "purpose": "generic strict full-grid forward run",
         "source_template": str(src),
         "destination": str(dst),
         "current_model_source": ctx["input_accepted_dir"],
         "runtime_outputs_excluded": sorted(runtime_names),
-        "scientific_status": "STRICT_FORWARD_PREPARED: current model is iter007 accepted; no legacy gradient involved.",
+        "scientific_status": "STRICT_FORWARD_PREPARED: material is copied from the current accepted model.",
     }
     (dst / "STRICT_ITER007_TO_ITER008_FULL_FORWARD_MARKER.json").write_text(json.dumps(marker, indent=2))
 
@@ -158,7 +158,7 @@ def main():
     lines.append("")
     lines.append("Safety:")
     lines.append("  Runtime traces/prot/res were excluded.")
-    lines.append("  Material HDF5 was replaced by iter007 accepted material.")
+    lines.append("  Material HDF5 was replaced by the current accepted material.")
     lines.append("  SEM3D was not run.")
     lines.append("")
     lines.append("RESULT = PASS" if ok else "RESULT = CHECK")

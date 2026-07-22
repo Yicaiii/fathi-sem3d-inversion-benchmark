@@ -37,6 +37,7 @@ out_json = report_dir / f"{transition}_prepare_strict_forward_task.json"
 
 script_450b = "scripts/fathi_benchmark/generic_from_legacy/450B_select_strict_forward_full_template_generic.py"
 script_450c = "scripts/fathi_benchmark/generic_from_legacy/450C_prepare_strict_full_forward_run_generic.py"
+script_forward_operator = "scripts/fathi_benchmark/enforce_forward_operator.py"
 
 def count_capteurs():
     if not traces_dir.exists():
@@ -108,12 +109,13 @@ elif not args.execute:
     lines.append("Plan only. Would run:")
     lines.append(f"  python3 {script_450b} --context {ctx_path.relative_to(ROOT)}")
     lines.append(f"  python3 {script_450c} --context {ctx_path.relative_to(ROOT)}")
+    lines.append(f"  python3 {script_forward_operator} --context {ctx_path.relative_to(ROOT)}")
 
 else:
     script_runs = []
     all_child_ok = True
 
-    for script in [script_450b, script_450c]:
+    for script in [script_450b, script_450c, script_forward_operator]:
         cmd = [
             sys.executable,
             script,

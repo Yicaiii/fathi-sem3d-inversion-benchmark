@@ -41,3 +41,20 @@ results/**/runtime/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Local SEM3D runtime data
+/data
+/results
+
+# Generated local execution reports
+/benchmark_fathi_strict/reports/
+
+# Local-only configurations
+/configs/*.local.json
+
+# Python and manual backups
+**/__pycache__/
+*.pyc
+*.bak
+*.bak_*
+*.before_*
