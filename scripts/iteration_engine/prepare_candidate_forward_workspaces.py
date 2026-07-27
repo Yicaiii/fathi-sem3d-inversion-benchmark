@@ -1,31 +1,61 @@
-from pathlib import Path
-import os
 from datetime import datetime
 import argparse
 import json
 import shutil
 import sys
 
-ROOT = Path(os.environ.get("FATHI_BENCHMARK_ROOT", str(Path.home() / "sem3d_fathi_clean"))).expanduser().resolve()
+from scripts.fathi_benchmark.runtime_paths import repository_root, resolve_path
+
+
+ROOT = repository_root()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--iter-k", type=int, required=True)
+parser.add_argument("--force", action="store_true")
 parser.add_argument("--config", default="benchmark_fathi_strict/config/benchmark_config.json")
 args = parser.parse_args()
 
-config = json.loads((ROOT / args.config).read_text())
+config_path = resolve_path(
+    args.config,
+    base=ROOT,
+)
+
+config = json.loads(
+    config_path.read_text(encoding="utf-8")
+)
 
 k = args.iter_k
 kp1 = k + 1
 transition = f"iter_{k:03d}_to_iter_{kp1:03d}"
 
-run_result_root = ROOT / config["run_result_root"] / transition
-run_data_root = ROOT / config["run_data_root"] / f"iter_{kp1:03d}"
+run_result_root = (
+    resolve_path(
+        config["run_result_root"],
+        base=ROOT,
+    )
+    / transition
+)
+
+run_data_root = (
+    resolve_path(
+        config["run_data_root"],
+        base=ROOT,
+    )
+    / f"iter_{kp1:03d}"
+)
 
 candidate_root = run_result_root / "candidates"
-template_dir = run_data_root / "forward_dudx_mgcap_full_batches/strict_full_forward_000"
-forward_root = run_data_root / "candidate_forward_workspaces"
-forward_root.mkdir(parents=True, exist_ok=True)
+
+template_dir = (
+    run_data_root
+    / "forward_dudx_mgcap_full_batches"
+    / "strict_full_forward_000"
+)
+
+forward_root = (
+    run_data_root
+    / "candidate_forward_workspaces"
+)
 
 required_template = [
     template_dir / "input.spec",
@@ -63,7 +93,40 @@ def ignore_runtime(dirpath, names):
     return ignored
 
 records = []
-for cand_dir in sorted(candidate_root.glob("line_search_neg_mtilde_*")):
+
+candidate_dirs = sorted(
+    candidate_root.glob(
+        "line_search_neg_mtilde_*"
+    )
+)
+
+existing_workspaces = [
+    forward_root / cand_dir.name
+    for cand_dir in candidate_dirs
+    if (forward_root / cand_dir.name).exists()
+]
+
+if existing_workspaces and not args.force:
+    print(
+        "Refusing to overwrite existing candidate "
+        "forward workspaces:"
+    )
+
+    for workspace in existing_workspaces:
+        print(" ", workspace)
+
+    print(
+        "Re-run with --force only after confirming "
+        "workspace replacement is intended."
+    )
+    sys.exit(3)
+
+forward_root.mkdir(
+    parents=True,
+    exist_ok=True,
+)
+
+for cand_dir in candidate_dirs:
     cand_h5 = cand_dir / "mat/h5"
     if not cand_h5.exists():
         records.append({
@@ -108,7 +171,10 @@ for cand_dir in sorted(candidate_root.glob("line_search_neg_mtilde_*")):
 
 all_ok = len(records) > 0 and all(r["ok"] for r in records)
 
-report_dir = ROOT / "benchmark_fathi_strict/reports/candidate_generation"
+report_dir = resolve_path(
+    "benchmark_fathi_strict/reports/candidate_generation",
+    base=ROOT,
+)
 report_dir.mkdir(parents=True, exist_ok=True)
 
 payload = {
@@ -116,6 +182,7 @@ payload = {
     "transition": transition,
     "template_dir": str(template_dir),
     "forward_root": str(forward_root),
+    "force": bool(args.force),
     "records": records,
     "result": "PASS" if all_ok else "CHECK_NEEDED",
 }
