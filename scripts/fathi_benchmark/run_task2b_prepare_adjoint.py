@@ -32,10 +32,10 @@ report_dir.mkdir(parents=True, exist_ok=True)
 out_txt = report_dir / f"{transition}_prepare_adjoint_task.txt"
 out_json = report_dir / f"{transition}_prepare_adjoint_task.json"
 
-scripts = [
-    "scripts/fathi_benchmark/generic_from_legacy/455A_extract_old_adjoint_source_format_generic.py",
-    "scripts/fathi_benchmark/generic_from_legacy/455B_prepare_strict_adjoint_batches_from_residual_generic.py",
-    "scripts/fathi_benchmark/generic_from_legacy/455C_audit_strict_adjoint_batches_generic.py",
+modules = [
+    "scripts.fathi_benchmark.generic_from_legacy.455A_extract_old_adjoint_source_format_generic",
+    "scripts.fathi_benchmark.generic_from_legacy.455B_prepare_strict_adjoint_batches_from_residual_generic",
+    "scripts.fathi_benchmark.generic_from_legacy.455C_audit_strict_adjoint_batches_generic",
 ]
 
 def inspect_batches():
@@ -98,15 +98,24 @@ if prepared_count == 30 and not args.force:
 elif not args.execute:
     payload["result"] = "PASS_PLAN_ONLY"
     lines.append("Plan only. Would run:")
-    for s in scripts:
-        lines.append(f"  python3 {s} --context {ctx_path.relative_to(ROOT)}")
+    for module in modules:
+        lines.append(
+            f"  python3 -m {module} "
+            f"--context {ctx_path.relative_to(ROOT)}"
+        )
 
 else:
     run_records = []
     ok = True
 
-    for s in scripts:
-        cmd = [sys.executable, s, "--context", str(ctx_path.relative_to(ROOT))]
+    for module in modules:
+        cmd = [
+            sys.executable,
+            "-m",
+            module,
+            "--context",
+            str(ctx_path.relative_to(ROOT)),
+        ]
         lines.append("")
         lines.append("Running:")
         lines.append("  " + " ".join(cmd))
@@ -130,7 +139,7 @@ else:
                 break
 
         rec = {
-            "script": s,
+            "script": module,
             "returncode": proc.returncode,
             "child_result": child_result,
             "stdout_tail": stdout_tail,
