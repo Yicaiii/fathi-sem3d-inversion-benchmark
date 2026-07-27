@@ -1,12 +1,16 @@
-from pathlib import Path
 from datetime import datetime
 import argparse
 import json
 import subprocess
 import sys
-import os
 
-ROOT = Path(os.environ.get("FATHI_BENCHMARK_ROOT", str(Path.home() / "sem3d_fathi_clean"))).expanduser().resolve()
+from scripts.fathi_benchmark.runtime_paths import (
+    repository_root,
+    resolve_path,
+)
+
+
+ROOT = repository_root()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--iter-k", type=int, required=True)
@@ -26,15 +30,31 @@ parser.add_argument(
 parser.add_argument("--candidate", default="line_search_neg_mtilde_1p00MPa")
 parser.add_argument("--execute", action="store_true")
 parser.add_argument("--force-forward", action="store_true")
+parser.add_argument(
+    "--allow-non-descent",
+    action="store_true",
+)
+parser.add_argument(
+    "--overwrite-existing",
+    action="store_true",
+)
 parser.add_argument("--np", type=int, default=12)
 parser.add_argument("--config", default="benchmark_fathi_strict/config/benchmark_config.json")
 args = parser.parse_args()
+
+config_path = resolve_path(
+    args.config,
+    base=ROOT,
+)
 
 k = args.iter_k
 kp1 = k + 1
 transition = f"iter_{k:03d}_to_iter_{kp1:03d}"
 
-report_dir = ROOT / "benchmark_fathi_strict/reports/run_iteration"
+report_dir = resolve_path(
+    "benchmark_fathi_strict/reports/run_iteration",
+    base=ROOT,
+)
 report_dir.mkdir(parents=True, exist_ok=True)
 
 created = datetime.now().isoformat()
@@ -55,65 +75,114 @@ def run_cmd(name, cmd):
         sys.exit(proc.returncode)
 
 def cmd_status():
-    p = ROOT / "scripts/iteration_engine/write_iteration_stage_report_v2.py"
-    if p.exists():
-        return [
-            sys.executable,
-            "scripts/iteration_engine/write_iteration_stage_report_v2.py",
-            "--iter-k", str(k),
-        ]
     return [
         sys.executable,
-        "scripts/iteration_engine/refresh_benchmark_status.py",
-        "--iter-k", str(k),
+        "-m",
+        (
+            "scripts.iteration_engine."
+            "write_iteration_stage_report_v2"
+        ),
+        "--iter-k",
+        str(k),
+        "--config",
+        str(config_path),
     ]
 
 def cmd_prerequisites():
     cmd = [
         sys.executable,
-        "scripts/fathi_benchmark/run_task0_prerequisites.py",
-        "--iter-k", str(k),
-        "--stage", "all",
+        "-m",
+        (
+            "scripts.fathi_benchmark."
+            "run_task0_prerequisites"
+        ),
+        "--iter-k",
+        str(k),
+        "--stage",
+        "all",
+        "--config",
+        str(config_path),
     ]
+
     if args.execute:
         cmd.append("--execute")
+
     return cmd
 
 def cmd_gradient():
     cmd = [
         sys.executable,
-        "scripts/fathi_benchmark/run_task3_gradient.py",
-        "--iter-k", str(k),
-        "--stage", "all",
+        "-m",
+        (
+            "scripts.fathi_benchmark."
+            "run_task3_gradient"
+        ),
+        "--iter-k",
+        str(k),
+        "--stage",
+        "all",
+        "--config",
+        str(config_path),
     ]
+
     if args.execute:
         cmd.append("--execute")
+
     return cmd
 
 def cmd_candidates():
     cmd = [
         sys.executable,
-        "scripts/fathi_benchmark/run_task4_candidates.py",
-        "--iter-k", str(k),
-        "--stage", "all",
+        "-m",
+        (
+            "scripts.fathi_benchmark."
+            "run_task4_candidates"
+        ),
+        "--iter-k",
+        str(k),
+        "--stage",
+        "all",
+        "--config",
+        str(config_path),
     ]
+
     if args.execute:
         cmd.append("--execute")
+
     return cmd
 
 def cmd_task5():
     cmd = [
         sys.executable,
-        "scripts/fathi_benchmark/run_task5_candidate.py",
-        "--iter-k", str(k),
-        "--candidate", args.candidate,
-        "--stage", "all",
-        "--np", str(args.np),
+        "-m",
+        (
+            "scripts.fathi_benchmark."
+            "run_task5_candidate"
+        ),
+        "--iter-k",
+        str(k),
+        "--candidate",
+        args.candidate,
+        "--stage",
+        "all",
+        "--np",
+        str(args.np),
+        "--config",
+        str(config_path),
     ]
+
     if args.execute:
         cmd.append("--execute")
+
     if args.force_forward:
         cmd.append("--force-forward")
+
+    if args.allow_non_descent:
+        cmd.append("--allow-non-descent")
+
+    if args.overwrite_existing:
+        cmd.append("--overwrite-existing")
+
     return cmd
 
 plan = {
@@ -123,7 +192,10 @@ plan = {
     "candidate": args.candidate,
     "execute": args.execute,
     "force_forward": args.force_forward,
+    "allow_non_descent": args.allow_non_descent,
+    "overwrite_existing": args.overwrite_existing,
     "np": args.np,
+    "config": str(config_path),
     "scope": {
         "current_engine_type": "resumed_iteration_orchestrator",
         "all_sequence": [
@@ -163,7 +235,16 @@ lines.append(f"stage = {args.stage}")
 lines.append(f"candidate = {args.candidate}")
 lines.append(f"execute = {args.execute}")
 lines.append(f"force_forward = {args.force_forward}")
+lines.append(
+    f"allow_non_descent = "
+    f"{args.allow_non_descent}"
+)
+lines.append(
+    f"overwrite_existing = "
+    f"{args.overwrite_existing}"
+)
 lines.append(f"np = {args.np}")
+lines.append(f"config = {config_path}")
 lines.append("")
 lines.append("Scope warning:")
 lines.append("  This is currently a resumed iteration orchestrator.")
