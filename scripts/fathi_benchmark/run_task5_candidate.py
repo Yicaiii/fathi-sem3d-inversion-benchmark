@@ -18,6 +18,14 @@ parser.add_argument(
 )
 parser.add_argument("--execute", action="store_true")
 parser.add_argument("--force-forward", action="store_true")
+parser.add_argument(
+    "--allow-non-descent",
+    action="store_true",
+)
+parser.add_argument(
+    "--overwrite-existing",
+    action="store_true",
+)
 parser.add_argument("--np", type=int, default=12)
 parser.add_argument(
     "--config",
@@ -101,7 +109,7 @@ def cmd_misfit_v2():
     ]
 
 def cmd_accept_v2():
-    return [
+    cmd = [
         sys.executable,
         "-m",
         (
@@ -112,6 +120,14 @@ def cmd_accept_v2():
         "--candidate", args.candidate,
         "--config", str(config_path),
     ]
+
+    if args.allow_non_descent:
+        cmd.append("--allow-non-descent")
+
+    if args.overwrite_existing:
+        cmd.append("--overwrite-existing")
+
+    return cmd
 
 plan = {
     "created": created,
