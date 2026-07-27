@@ -4,9 +4,10 @@ import argparse
 import json
 import subprocess
 import sys
-import os
 
-ROOT = Path(os.environ.get("FATHI_BENCHMARK_ROOT", str(Path.home() / "sem3d_fathi_clean"))).expanduser().resolve()
+from runtime_paths import repository_root
+
+ROOT = repository_root()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--context", required=True)
