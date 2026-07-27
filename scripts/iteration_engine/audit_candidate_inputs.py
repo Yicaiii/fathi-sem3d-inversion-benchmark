@@ -1,5 +1,3 @@
-from pathlib import Path
-import os
 from datetime import datetime
 import argparse
 import json
@@ -7,23 +5,55 @@ import numpy as np
 import h5py
 import sys
 
-ROOT = Path(os.environ.get("FATHI_BENCHMARK_ROOT", str(Path.home() / "sem3d_fathi_clean"))).expanduser().resolve()
+from scripts.fathi_benchmark.runtime_paths import repository_root, resolve_path
+
+
+ROOT = repository_root()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--iter-k", type=int, required=True)
 parser.add_argument("--config", default="benchmark_fathi_strict/config/benchmark_config.json")
 args = parser.parse_args()
 
-config = json.loads((ROOT / args.config).read_text())
+config_path = resolve_path(
+    args.config,
+    base=ROOT,
+)
+
+config = json.loads(
+    config_path.read_text(encoding="utf-8")
+)
 
 k = args.iter_k
 kp1 = k + 1
 transition = f"iter_{k:03d}_to_iter_{kp1:03d}"
 
-state_in = ROOT / config["state_dir"] / f"iter_{k:03d}_state_v2_corrected.npz"
-run_result_root = ROOT / config["run_result_root"] / transition
+state_in = (
+    resolve_path(
+        config["state_dir"],
+        base=ROOT,
+    )
+    / f"iter_{k:03d}_state_v2_corrected.npz"
+)
+
+run_result_root = (
+    resolve_path(
+        config["run_result_root"],
+        base=ROOT,
+    )
+    / transition
+)
+
 mtilde_dir = run_result_root / "mtilde_solve"
-parent_accepted = ROOT / config["run_data_root"] / f"iter_{k:03d}" / "accepted"
+
+parent_accepted = (
+    resolve_path(
+        config["run_data_root"],
+        base=ROOT,
+    )
+    / f"iter_{k:03d}"
+    / "accepted"
+)
 
 paths = {
     "state_in": state_in,
@@ -62,7 +92,10 @@ def h5_datasets(path):
         h.visititems(visit)
     return out
 
-out_dir = ROOT / "benchmark_fathi_strict/reports/candidate_generation"
+out_dir = resolve_path(
+    "benchmark_fathi_strict/reports/candidate_generation",
+    base=ROOT,
+)
 out_dir.mkdir(parents=True, exist_ok=True)
 
 created = datetime.now().isoformat()
