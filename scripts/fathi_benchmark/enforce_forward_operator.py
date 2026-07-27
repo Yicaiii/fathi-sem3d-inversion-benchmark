@@ -1,25 +1,19 @@
 #!/usr/bin/env python3
 
-from pathlib import Path
 from datetime import datetime
 import argparse
 import json
-import os
 import re
 import sys
 
+from runtime_paths import repository_root, resolve_path
 
-ROOT = Path(
-    os.environ.get(
-        "FATHI_BENCHMARK_ROOT",
-        str(Path.home() / "sem3d_fathi_clean"),
-    )
-).expanduser().resolve()
+
+ROOT = repository_root()
 
 
 def resolve(value):
-    path = Path(value).expanduser()
-    return path if path.is_absolute() else ROOT / path
+    return resolve_path(value, base=ROOT)
 
 
 def source_coordinates(text):
