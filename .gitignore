@@ -58,3 +58,8 @@ Thumbs.db
 *.bak
 *.bak_*
 *.before_*
+
+# Local environment configuration
+.env
+.env.*
+!.env.example
