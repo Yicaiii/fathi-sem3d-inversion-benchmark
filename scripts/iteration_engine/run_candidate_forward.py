@@ -4,9 +4,14 @@ import argparse
 import json
 import subprocess
 import sys
-import os
 
-ROOT = Path(os.environ.get("FATHI_BENCHMARK_ROOT", str(Path.home() / "sem3d_fathi_clean"))).expanduser().resolve()
+from scripts.fathi_benchmark.runtime_paths import (
+    repository_root,
+    resolve_path,
+    sem3d_executable,
+)
+
+ROOT = repository_root()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--iter-k", type=int, required=True)
@@ -17,25 +22,49 @@ parser.add_argument("--force", action="store_true")
 parser.add_argument("--config", default="benchmark_fathi_strict/config/benchmark_config.json")
 args = parser.parse_args()
 
-config = json.loads((ROOT / args.config).read_text())
+config_path = resolve_path(
+    args.config,
+    base=ROOT,
+)
+
+config = json.loads(
+    config_path.read_text(encoding="utf-8")
+)
 
 k = args.iter_k
 kp1 = k + 1
 transition = f"iter_{k:03d}_to_iter_{kp1:03d}"
 
-sem3d_exe = Path(config.get("sem3d_exe", "/home/crellamaybe/SEM/build/SEM3D/sem3d.exe"))
-if not sem3d_exe.is_absolute():
-    sem3d_exe = ROOT / sem3d_exe
+sem3d_exe = sem3d_executable(
+    config=config,
+    repo_root=ROOT,
+)
 
-run_result_root = ROOT / config["run_result_root"] / transition
-run_data_root = ROOT / config["run_data_root"] / f"iter_{kp1:03d}"
+run_result_root = (
+    resolve_path(
+        config["run_result_root"],
+        base=ROOT,
+    )
+    / transition
+)
+
+run_data_root = (
+    resolve_path(
+        config["run_data_root"],
+        base=ROOT,
+    )
+    / f"iter_{kp1:03d}"
+)
 
 candidate_root = run_result_root / "candidates"
 candidate_dir = candidate_root / args.candidate
 
 workspace = run_data_root / "candidate_forward_workspaces" / args.candidate
 
-report_dir = ROOT / "benchmark_fathi_strict/reports/candidate_forward"
+report_dir = resolve_path(
+    "benchmark_fathi_strict/reports/candidate_forward",
+    base=ROOT,
+)
 log_dir = run_result_root / "candidate_forward_runs/logs"
 report_dir.mkdir(parents=True, exist_ok=True)
 log_dir.mkdir(parents=True, exist_ok=True)
