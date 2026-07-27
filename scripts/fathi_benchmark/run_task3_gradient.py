@@ -56,7 +56,8 @@ def cmd_manifests():
 def cmd_rhs(comp):
     return [
         sys.executable,
-        "scripts/longterm/424B_compute_rhs_component_from_traces.py",
+        "-m",
+        "scripts.longterm.424B_compute_rhs_component_from_traces",
         "--component", comp,
         "--forward-manifest",
         str((manifest_dir / "forward_full_grid_trace_manifest.csv").relative_to(ROOT)),

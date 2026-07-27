@@ -1,11 +1,12 @@
 from pathlib import Path
-import os
 import argparse
 import csv
 import h5py
 import numpy as np
 import re
 from collections import defaultdict
+
+from scripts.fathi_benchmark.runtime_paths import repository_root, resolve_path
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--component", required=True, choices=["x", "y", "z"])
@@ -15,17 +16,20 @@ parser.add_argument("--out-dir", required=True)
 parser.add_argument("--label", required=True)
 args = parser.parse_args()
 
-ROOT = Path(os.environ.get("FATHI_BENCHMARK_ROOT", str(Path.home() / "sem3d_fathi_clean"))).expanduser().resolve()
+ROOT = repository_root()
 
-FWD_MANIFEST = Path(args.forward_manifest).expanduser()
-ADJ_MANIFEST = Path(args.adjoint_manifest).expanduser()
-OUT_DIR = Path(args.out_dir).expanduser()
-if not FWD_MANIFEST.is_absolute():
-    FWD_MANIFEST = ROOT / FWD_MANIFEST
-if not ADJ_MANIFEST.is_absolute():
-    ADJ_MANIFEST = ROOT / ADJ_MANIFEST
-if not OUT_DIR.is_absolute():
-    OUT_DIR = ROOT / OUT_DIR
+FWD_MANIFEST = resolve_path(
+    args.forward_manifest,
+    base=ROOT,
+)
+ADJ_MANIFEST = resolve_path(
+    args.adjoint_manifest,
+    base=ROOT,
+)
+OUT_DIR = resolve_path(
+    args.out_dir,
+    base=ROOT,
+)
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 OUT_LAM = OUT_DIR / f"{args.label}_RHS_{args.component}_lambda.npy"
@@ -171,7 +175,10 @@ total_done = 0
 bad = []
 
 for fwd_rel, group in sorted(pairs_by_fwd_file.items()):
-    fwd_path = ROOT / fwd_rel
+    fwd_path = resolve_path(
+        fwd_rel,
+        base=ROOT,
+    )
     print("")
     print(f"Forward file: {fwd_rel}")
     print(f"  receivers in this file: {len(group)}")
@@ -187,7 +194,10 @@ for fwd_rel, group in sorted(pairs_by_fwd_file.items()):
         f_dudx_cols = find_dudx_cols(f_vars)
 
         for adj_rel, sub in sorted(by_adj.items()):
-            adj_path = ROOT / adj_rel
+            adj_path = resolve_path(
+                adj_rel,
+                base=ROOT,
+            )
             print(f"  Adjoint file: {adj_rel} receivers={len(sub)}")
 
             with h5py.File(adj_path, "r") as af:
