@@ -4,7 +4,7 @@ import json
 import subprocess
 import sys
 
-from runtime_paths import repository_root
+from runtime_paths import repository_root, resolve_path
 
 ROOT = repository_root()
 
@@ -33,13 +33,29 @@ k = args.iter_k
 kp1 = k + 1
 transition = f"iter_{k:03d}_to_iter_{kp1:03d}"
 
-config = json.loads((ROOT / args.config).read_text())
+config_path = resolve_path(
+    args.config,
+    base=ROOT,
+)
 
-run_result_root = ROOT / config["run_result_root"] / transition
+config = json.loads(
+    config_path.read_text(encoding="utf-8")
+)
+
+run_result_root = (
+    resolve_path(
+        config["run_result_root"],
+        base=ROOT,
+    )
+    / transition
+)
 manifest_dir = run_result_root / "rhs_manifests"
 component_rhs_dir = run_result_root / "component_rhs"
 
-report_dir = ROOT / "benchmark_fathi_strict/reports/task_wrappers"
+report_dir = resolve_path(
+    "benchmark_fathi_strict/reports/task_wrappers",
+    base=ROOT,
+)
 report_dir.mkdir(parents=True, exist_ok=True)
 
 created = datetime.now().isoformat()
@@ -60,11 +76,17 @@ def cmd_rhs(comp):
         "scripts.longterm.424B_compute_rhs_component_from_traces",
         "--component", comp,
         "--forward-manifest",
-        str((manifest_dir / "forward_full_grid_trace_manifest.csv").relative_to(ROOT)),
+        str(
+            manifest_dir
+            / "forward_full_grid_trace_manifest.csv"
+        ),
         "--adjoint-manifest",
-        str((manifest_dir / f"adjoint_{comp}_full_grid_trace_manifest.csv").relative_to(ROOT)),
+        str(
+            manifest_dir
+            / f"adjoint_{comp}_full_grid_trace_manifest.csv"
+        ),
         "--out-dir",
-        str(component_rhs_dir.relative_to(ROOT)),
+        str(component_rhs_dir),
         "--label",
         "full_grid_trace",
     ]
