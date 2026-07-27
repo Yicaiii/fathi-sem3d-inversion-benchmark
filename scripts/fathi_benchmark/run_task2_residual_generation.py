@@ -44,8 +44,8 @@ residual_dir = rel_or_abs(ctx.get("residual_dir", Path(ctx["work_root"]) / "resi
 h5_out = rel_or_abs(ctx.get("residual_h5", residual_dir / "454B_strict_residual_timeseries.h5"))
 summary_txt = rel_or_abs(ctx.get("residual_summary_txt", residual_dir / "454B_strict_residual_timeseries_summary.txt"))
 
-script_a = ROOT / "scripts/fathi_benchmark/generic_from_legacy/454A_compute_strict_forward_residual_manifest_generic.py"
-script_b = ROOT / "scripts/fathi_benchmark/generic_from_legacy/454B_build_strict_residual_timeseries_h5_generic.py"
+module_a = "scripts.fathi_benchmark.generic_from_legacy.454A_compute_strict_forward_residual_manifest_generic"
+module_b = "scripts.fathi_benchmark.generic_from_legacy.454B_build_strict_residual_timeseries_h5_generic"
 
 report_dir = ROOT / "benchmark_fathi_strict/reports/executable_tasks"
 report_dir.mkdir(parents=True, exist_ok=True)
@@ -93,15 +93,21 @@ if summary_pass() and not args.force:
 elif not args.execute:
     record["result"] = "PASS_PLAN_ONLY"
     lines.append("Plan only. Would run:")
-    lines.append(f"  python3 {script_a.relative_to(ROOT)} --context {ctx_path.relative_to(ROOT)}")
-    lines.append(f"  python3 {script_b.relative_to(ROOT)} --context {ctx_path.relative_to(ROOT)}")
+    lines.append(f"  python3 -m {module_a} --context {ctx_path.relative_to(ROOT)}")
+    lines.append(f"  python3 -m {module_b} --context {ctx_path.relative_to(ROOT)}")
 
 else:
     run_records = []
     ok = True
 
-    for script in [script_a, script_b]:
-        cmd = [sys.executable, str(script.relative_to(ROOT)), "--context", str(ctx_path.relative_to(ROOT))]
+    for module in [module_a, module_b]:
+        cmd = [
+            sys.executable,
+            "-m",
+            module,
+            "--context",
+            str(ctx_path.relative_to(ROOT)),
+        ]
         lines.append("")
         lines.append("Running:")
         lines.append("  " + " ".join(cmd))
@@ -116,7 +122,7 @@ else:
                 break
 
         rec = {
-            "script": str(script.relative_to(ROOT)),
+            "script": module,
             "returncode": proc.returncode,
             "child_result": child_result,
             "stdout_tail": proc.stdout.splitlines()[-100:],
