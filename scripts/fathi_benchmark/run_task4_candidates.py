@@ -24,6 +24,7 @@ parser.add_argument(
 )
 parser.add_argument("--execute", action="store_true")
 parser.add_argument("--config", default="benchmark_fathi_strict/config/benchmark_config.json")
+parser.add_argument("--force", action="store_true")
 args = parser.parse_args()
 
 k = args.iter_k
@@ -65,7 +66,7 @@ def cmd_audit_inputs():
     ]
 
 def cmd_generate():
-    return [
+    command = [
         sys.executable,
         "-m",
         (
@@ -75,6 +76,11 @@ def cmd_generate():
         "--iter-k", str(k),
         "--config", str(config_path),
     ]
+
+    if args.force:
+        command.append("--force")
+
+    return command
 
 def cmd_audit():
     return [
@@ -86,7 +92,7 @@ def cmd_audit():
     ]
 
 def cmd_prepare_workspaces():
-    return [
+    command = [
         sys.executable,
         "-m",
         (
@@ -96,6 +102,11 @@ def cmd_prepare_workspaces():
         "--iter-k", str(k),
         "--config", str(config_path),
     ]
+
+    if args.force:
+        command.append("--force")
+
+    return command
 
 command_map = {
     "audit_inputs": cmd_audit_inputs(),
