@@ -47,7 +47,8 @@ created = datetime.now().isoformat()
 def cmd_manifests():
     return [
         sys.executable,
-        "scripts/iteration_engine/build_rhs_manifests_generic_v2.py",
+        "-m",
+        "scripts.iteration_engine.build_rhs_manifests_generic_v2",
         "--iter-k", str(k),
         "--config", args.config,
     ]

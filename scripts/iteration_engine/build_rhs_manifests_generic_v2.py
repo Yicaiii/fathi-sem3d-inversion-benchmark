@@ -1,5 +1,4 @@
 from pathlib import Path
-import os
 from datetime import datetime
 import argparse
 import csv
@@ -10,7 +9,9 @@ import sys
 import h5py
 import numpy as np
 
-ROOT = Path(os.environ.get("FATHI_BENCHMARK_ROOT", str(Path.home() / "sem3d_fathi_clean"))).expanduser().resolve()
+from scripts.fathi_benchmark.runtime_paths import repository_root, resolve_path
+
+ROOT = repository_root()
 UU_RE = re.compile(r"^UU_\d+$")
 
 def rel(p: Path) -> str:
@@ -131,7 +132,7 @@ parser.add_argument("--iter-k", type=int, required=True)
 parser.add_argument("--config", default="benchmark_fathi_strict/config/benchmark_config.json")
 args = parser.parse_args()
 
-config_path = ROOT / args.config
+config_path = resolve_path(args.config, base=ROOT)
 if not config_path.exists():
     print(f"Missing config: {config_path}")
     sys.exit(1)
@@ -143,8 +144,14 @@ kp1 = k + 1
 transition = f"iter_{k:03d}_to_iter_{kp1:03d}"
 expected_n = int(config.get("interior_gradient_size", 38440))
 
-run_result_root = ROOT / config["run_result_root"] / transition
-run_data_root = ROOT / config["run_data_root"] / f"iter_{kp1:03d}"
+run_result_root = (
+    resolve_path(config["run_result_root"], base=ROOT)
+    / transition
+)
+run_data_root = (
+    resolve_path(config["run_data_root"], base=ROOT)
+    / f"iter_{kp1:03d}"
+)
 
 forward_trace_dir = run_data_root / "forward_dudx_mgcap_full_batches/strict_full_forward_000/traces"
 adj_base = run_data_root / "adjoint_full_grid_batches"
