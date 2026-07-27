@@ -142,6 +142,19 @@ if args.stage == "plan":
     print("RESULT = PASS_PLAN")
     sys.exit(0)
 
+if not args.execute:
+    print("")
+    print(
+        "DRY RUN ONLY. No Task 5 child "
+        "was executed."
+    )
+    print(
+        "Use --execute to run the selected "
+        "Task 5 stage."
+    )
+    print("RESULT = PASS_DRYRUN")
+    sys.exit(0)
+
 if args.stage in ["forward", "all"]:
     run_cmd(cmd_forward(), "Task 5A candidate forward")
 
