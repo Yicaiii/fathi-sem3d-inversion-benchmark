@@ -4,7 +4,7 @@ import json
 import subprocess
 import sys
 
-from runtime_paths import repository_root
+from scripts.fathi_benchmark.runtime_paths import repository_root, resolve_path
 
 ROOT = repository_root()
 
@@ -19,13 +19,28 @@ parser.add_argument(
 parser.add_argument("--execute", action="store_true")
 parser.add_argument("--force-forward", action="store_true")
 parser.add_argument("--np", type=int, default=12)
+parser.add_argument(
+    "--config",
+    default=(
+        "benchmark_fathi_strict/config/"
+        "benchmark_config.json"
+    ),
+)
 args = parser.parse_args()
+
+config_path = resolve_path(
+    args.config,
+    base=ROOT,
+)
 
 k = args.iter_k
 kp1 = k + 1
 transition = f"iter_{k:03d}_to_iter_{kp1:03d}"
 
-report_dir = ROOT / "benchmark_fathi_strict/reports/task5_wrappers"
+report_dir = resolve_path(
+    "benchmark_fathi_strict/reports/task5_wrappers",
+    base=ROOT,
+)
 report_dir.mkdir(parents=True, exist_ok=True)
 
 created = datetime.now().isoformat()
@@ -53,31 +68,49 @@ def run_cmd(cmd, name):
 def cmd_forward():
     cmd = [
         sys.executable,
-        "scripts/iteration_engine/run_candidate_forward.py",
+        "-m",
+        (
+            "scripts.iteration_engine."
+            "run_candidate_forward"
+        ),
         "--iter-k", str(k),
         "--candidate", args.candidate,
         "--np", str(args.np),
+        "--config", str(config_path),
     ]
+
     if args.execute:
         cmd.append("--execute")
+
     if args.force_forward:
         cmd.append("--force")
+
     return cmd
 
 def cmd_misfit_v2():
     return [
         sys.executable,
-        "scripts/iteration_engine/compute_candidate_misfit_v2.py",
+        "-m",
+        (
+            "scripts.iteration_engine."
+            "compute_candidate_misfit_v2"
+        ),
         "--iter-k", str(k),
         "--candidate", args.candidate,
+        "--config", str(config_path),
     ]
 
 def cmd_accept_v2():
     return [
         sys.executable,
-        "scripts/iteration_engine/accept_candidate_if_descent_v2.py",
+        "-m",
+        (
+            "scripts.iteration_engine."
+            "accept_candidate_if_descent_v2"
+        ),
         "--iter-k", str(k),
         "--candidate", args.candidate,
+        "--config", str(config_path),
     ]
 
 plan = {
