@@ -1,13 +1,51 @@
-from pathlib import Path
+import argparse
+
 import numpy as np
 from scipy.sparse import load_npz, save_npz
 from scipy.sparse.linalg import spsolve
 
-ROOT = Path.home() / "sem3d_fathi_clean"
+from scripts.fathi_benchmark.runtime_paths import repository_root, resolve_path
 
-M_PATH = ROOT / "results/audit_teacher_feedback/iter005_mass_matrix/Mtilde_q1_consistent_sparse.npz"
-RHS_DIR = ROOT / "results/longterm_capteurs_material_grid/component_rhs"
-OUT = ROOT / "results/longterm_capteurs_material_grid/mtilde_solve_full_grid"
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--matrix",
+    default=(
+        "results/audit_teacher_feedback/"
+        "iter005_mass_matrix/"
+        "Mtilde_q1_consistent_sparse.npz"
+    ),
+)
+parser.add_argument(
+    "--rhs-dir",
+    default=(
+        "results/longterm_capteurs_material_grid/"
+        "component_rhs"
+    ),
+)
+parser.add_argument(
+    "--out-dir",
+    default=(
+        "results/longterm_capteurs_material_grid/"
+        "mtilde_solve_full_grid"
+    ),
+)
+args = parser.parse_args()
+
+ROOT = repository_root()
+
+M_PATH = resolve_path(
+    args.matrix,
+    base=ROOT,
+)
+RHS_DIR = resolve_path(
+    args.rhs_dir,
+    base=ROOT,
+)
+OUT = resolve_path(
+    args.out_dir,
+    base=ROOT,
+)
 OUT.mkdir(parents=True, exist_ok=True)
 
 M = load_npz(M_PATH).tocsr()

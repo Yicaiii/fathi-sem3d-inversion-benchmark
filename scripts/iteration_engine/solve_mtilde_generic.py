@@ -1,54 +1,135 @@
-from pathlib import Path
-import os
 from datetime import datetime
+from importlib.util import find_spec
 import argparse
 import json
 import subprocess
 import sys
-import numpy as np
 
-ROOT = Path(os.environ.get("FATHI_BENCHMARK_ROOT", str(Path.home() / "sem3d_fathi_clean"))).expanduser().resolve()
+from scripts.fathi_benchmark.runtime_paths import repository_root, resolve_path
+
+
+SOLVER_MODULE = (
+    "scripts.longterm."
+    "426C_solve_mtilde_interior_rhs_total"
+)
+
+DEFAULT_MATRIX_PATH = (
+    "results/audit_teacher_feedback/"
+    "iter005_mass_matrix/"
+    "Mtilde_q1_consistent_sparse.npz"
+)
+
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--iter-k", type=int, required=True)
-parser.add_argument("--execute", action="store_true")
-parser.add_argument("--config", default="benchmark_fathi_strict/config/benchmark_config.json")
+parser.add_argument(
+    "--iter-k",
+    type=int,
+    required=True,
+)
+parser.add_argument(
+    "--execute",
+    action="store_true",
+)
+parser.add_argument(
+    "--config",
+    default=(
+        "benchmark_fathi_strict/config/"
+        "benchmark_config.json"
+    ),
+)
 args = parser.parse_args()
 
-config_path = ROOT / args.config
+
+ROOT = repository_root()
+
+config_path = resolve_path(
+    args.config,
+    base=ROOT,
+)
+
 if not config_path.exists():
     print(f"Missing config: {config_path}")
     sys.exit(1)
 
-config = json.loads(config_path.read_text())
+config = json.loads(
+    config_path.read_text(encoding="utf-8")
+)
 
 k = args.iter_k
 kp1 = k + 1
 transition = f"iter_{k:03d}_to_iter_{kp1:03d}"
 
-run_result_root = ROOT / config["run_result_root"] / transition
-component_rhs_dir = run_result_root / "component_rhs"
-mtilde_solve_dir = run_result_root / "mtilde_solve"
-generated_dir = run_result_root / "generated_scripts"
-report_dir = ROOT / "benchmark_fathi_strict/reports/mtilde_run"
+run_result_root = (
+    resolve_path(
+        config["run_result_root"],
+        base=ROOT,
+    )
+    / transition
+)
 
-mtilde_solve_dir.mkdir(parents=True, exist_ok=True)
-generated_dir.mkdir(parents=True, exist_ok=True)
-report_dir.mkdir(parents=True, exist_ok=True)
+component_rhs_dir = (
+    run_result_root
+    / "component_rhs"
+)
 
-old_script = ROOT / "scripts/longterm/426C_solve_mtilde_interior_rhs_total.py"
-generated_script = generated_dir / f"426C_solve_mtilde_{transition}.py"
+mtilde_solve_dir = (
+    run_result_root
+    / "mtilde_solve"
+)
+
+report_dir = resolve_path(
+    "benchmark_fathi_strict/reports/mtilde_run",
+    base=ROOT,
+)
+
+matrix_path = resolve_path(
+    config.get(
+        "mtilde_matrix_path",
+        DEFAULT_MATRIX_PATH,
+    ),
+    base=ROOT,
+)
+
+mtilde_solve_dir.mkdir(
+    parents=True,
+    exist_ok=True,
+)
+
+report_dir.mkdir(
+    parents=True,
+    exist_ok=True,
+)
 
 required_inputs = [
-    component_rhs_dir / "full_grid_trace_RHS_total_lambda.npy",
-    component_rhs_dir / "full_grid_trace_RHS_total_mu.npy",
-    component_rhs_dir / "full_grid_trace_RHS_total_coords.npy",
-    component_rhs_dir / "full_grid_trace_RHS_total_summary.txt",
-    ROOT / "results/audit_teacher_feedback/iter005_mass_matrix/Mtilde_q1_consistent_sparse.npz",
-    old_script,
+    (
+        component_rhs_dir
+        / "full_grid_trace_RHS_total_lambda.npy"
+    ),
+    (
+        component_rhs_dir
+        / "full_grid_trace_RHS_total_mu.npy"
+    ),
+    (
+        component_rhs_dir
+        / "full_grid_trace_RHS_total_coords.npy"
+    ),
+    (
+        component_rhs_dir
+        / "full_grid_trace_RHS_total_summary.txt"
+    ),
+    matrix_path,
 ]
 
-missing = [p for p in required_inputs if not p.exists()]
+missing = [
+    path
+    for path in required_inputs
+    if not path.exists()
+]
+
+solver_available = (
+    find_spec(SOLVER_MODULE)
+    is not None
+)
 
 created = datetime.now().isoformat()
 
@@ -56,156 +137,305 @@ record = {
     "created": created,
     "transition": transition,
     "execute": args.execute,
-    "component_rhs_dir": str(component_rhs_dir),
-    "mtilde_solve_dir": str(mtilde_solve_dir),
-    "old_script": str(old_script),
-    "generated_script": str(generated_script),
-    "missing": [str(p) for p in missing],
+    "component_rhs_dir": str(
+        component_rhs_dir
+    ),
+    "mtilde_solve_dir": str(
+        mtilde_solve_dir
+    ),
+    "matrix_path": str(matrix_path),
+    "solver_module": SOLVER_MODULE,
+    "solver_available": solver_available,
+    "missing": [
+        str(path)
+        for path in missing
+    ],
     "result": None,
 }
 
-lines = []
-lines.append("Task 3J generic Mtilde solve")
-lines.append("============================")
-lines.append("")
-lines.append(f"created = {created}")
-lines.append(f"transition = {transition}")
-lines.append(f"execute = {args.execute}")
-lines.append("")
-lines.append(f"component_rhs_dir = {component_rhs_dir}")
-lines.append(f"mtilde_solve_dir = {mtilde_solve_dir}")
-lines.append(f"old_script = {old_script}")
-lines.append(f"generated_script = {generated_script}")
-lines.append("")
+lines = [
+    "Task 3J generic Mtilde solve",
+    "============================",
+    "",
+    f"created = {created}",
+    f"transition = {transition}",
+    f"execute = {args.execute}",
+    "",
+    (
+        "component_rhs_dir = "
+        f"{component_rhs_dir}"
+    ),
+    (
+        "mtilde_solve_dir = "
+        f"{mtilde_solve_dir}"
+    ),
+    f"matrix_path = {matrix_path}",
+    f"solver_module = {SOLVER_MODULE}",
+    (
+        "solver_available = "
+        f"{solver_available}"
+    ),
+    "",
+]
 
-if missing:
-    lines.append("Missing required inputs:")
-    for p in missing:
-        lines.append(f"  {p}")
-    lines.append("")
-    lines.append("RESULT = FAIL_MISSING_INPUTS")
-    record["result"] = "FAIL_MISSING_INPUTS"
+if not solver_available:
+    lines.extend([
+        (
+            "Solver module was not found: "
+            f"{SOLVER_MODULE}"
+        ),
+        "",
+        "RESULT = FAIL_MISSING_SOLVER_MODULE",
+    ])
+
+    record["result"] = (
+        "FAIL_MISSING_SOLVER_MODULE"
+    )
+
+elif missing:
+    lines.append(
+        "Missing required inputs:"
+    )
+
+    for path in missing:
+        lines.append(f"  {path}")
+
+    lines.extend([
+        "",
+        "RESULT = FAIL_MISSING_INPUTS",
+    ])
+
+    record["result"] = (
+        "FAIL_MISSING_INPUTS"
+    )
+
 else:
-    rhs_summary = component_rhs_dir / "full_grid_trace_RHS_total_summary.txt"
-    rhs_summary_text = rhs_summary.read_text(errors="ignore")
+    rhs_summary = (
+        component_rhs_dir
+        / "full_grid_trace_RHS_total_summary.txt"
+    )
+
+    rhs_summary_text = rhs_summary.read_text(
+        errors="ignore",
+    )
+
     if "RESULT = PASS" not in rhs_summary_text:
-        lines.append(f"RHS_total summary does not contain RESULT = PASS: {rhs_summary}")
-        lines.append("")
-        lines.append("RESULT = FAIL_BAD_RHS_TOTAL")
-        record["result"] = "FAIL_BAD_RHS_TOTAL"
+        lines.extend([
+            (
+                "RHS_total summary does not "
+                "contain RESULT = PASS:"
+            ),
+            f"  {rhs_summary}",
+            "",
+            "RESULT = FAIL_BAD_RHS_TOTAL",
+        ])
+
+        record["result"] = (
+            "FAIL_BAD_RHS_TOTAL"
+        )
+
     else:
-        src = old_script.read_text()
+        cmd = [
+            sys.executable,
+            "-m",
+            SOLVER_MODULE,
+            "--matrix",
+            str(matrix_path),
+            "--rhs-dir",
+            str(component_rhs_dir),
+            "--out-dir",
+            str(mtilde_solve_dir),
+        ]
 
-        old_rhs = 'RHS_DIR = ROOT / "results/longterm_capteurs_material_grid/component_rhs"'
-        new_rhs = f'RHS_DIR = ROOT / "{component_rhs_dir.relative_to(ROOT)}"'
+        record["command"] = cmd
 
-        old_out = 'OUT = ROOT / "results/longterm_capteurs_material_grid/mtilde_solve_full_grid"'
-        new_out = f'OUT = ROOT / "{mtilde_solve_dir.relative_to(ROOT)}"'
+        lines.extend([
+            "Solver command:",
+            "  " + " ".join(cmd),
+            "",
+        ])
 
-        if old_rhs not in src:
-            lines.append("Could not find old RHS_DIR line in 426C script.")
-            lines.append("RESULT = FAIL_PATCH_RHS")
-            record["result"] = "FAIL_PATCH_RHS"
-        elif old_out not in src:
-            lines.append("Could not find old OUT line in 426C script.")
-            lines.append("RESULT = FAIL_PATCH_OUT")
-            record["result"] = "FAIL_PATCH_OUT"
+        if not args.execute:
+            lines.extend([
+                "DRY RUN ONLY.",
+                "No Mtilde solve was launched.",
+                "",
+                "RESULT = PASS_DRYRUN",
+            ])
+
+            record["result"] = (
+                "PASS_DRYRUN"
+            )
+
         else:
-            patched = src.replace(old_rhs, new_rhs).replace(old_out, new_out)
+            proc = subprocess.run(
+                cmd,
+                cwd=ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
 
-            header = f'''# Auto-generated by scripts/iteration_engine/solve_mtilde_generic.py
-# created = {created}
-# transition = {transition}
-# This is a patched copy of scripts/longterm/426C_solve_mtilde_interior_rhs_total.py
-# RHS_DIR and OUT are redirected to the current transition.
+            record["returncode"] = (
+                proc.returncode
+            )
+            record["stdout_tail"] = (
+                proc.stdout.splitlines()[-120:]
+            )
+            record["stderr_tail"] = (
+                proc.stderr.splitlines()[-120:]
+            )
 
-'''
-            generated_script.write_text(header + patched, encoding="utf-8")
-
-            lines.append("Generated patched Mtilde script:")
-            lines.append(f"  {generated_script}")
+            lines.append("stdout tail:")
+            lines.extend(
+                "  " + line
+                for line in record["stdout_tail"]
+            )
             lines.append("")
 
-            if not args.execute:
-                lines.append("DRY RUN ONLY.")
-                lines.append("No solve launched.")
-                lines.append("")
-                lines.append("To execute:")
-                lines.append(f"  python3 scripts/iteration_engine/solve_mtilde_generic.py --iter-k {k} --execute")
-                lines.append("")
-                lines.append("RESULT = PASS_DRYRUN")
-                record["result"] = "PASS_DRYRUN"
-            else:
-                cmd = [sys.executable, str(generated_script.relative_to(ROOT))]
-                lines.append("Running:")
-                lines.append("  " + " ".join(cmd))
-                lines.append("")
+            lines.append("stderr tail:")
+            lines.extend(
+                "  " + line
+                for line in record["stderr_tail"]
+            )
+            lines.append("")
 
-                proc = subprocess.run(
-                    cmd,
-                    cwd=ROOT,
-                    text=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
+            summary = (
+                mtilde_solve_dir
+                / (
+                    "mtilde_q1_interior_solve_"
+                    "rhs_total_summary.txt"
+                )
+            )
+
+            outputs = [
+                (
+                    mtilde_solve_dir
+                    / (
+                        "Mtilde_q1_consistent_"
+                        "interior_38440_sparse.npz"
+                    )
+                ),
+                (
+                    mtilde_solve_dir
+                    / (
+                        "Mtilde_q1_consistent_"
+                        "interior_38440_indices.npy"
+                    )
+                ),
+                (
+                    mtilde_solve_dir
+                    / (
+                        "Mtilde_q1_consistent_"
+                        "interior_38440_coords.npy"
+                    )
+                ),
+                (
+                    mtilde_solve_dir
+                    / (
+                        "g_lambda_mtilde_q1_"
+                        "interior_solve_rhs_total.npy"
+                    )
+                ),
+                (
+                    mtilde_solve_dir
+                    / (
+                        "g_mu_mtilde_q1_"
+                        "interior_solve_rhs_total.npy"
+                    )
+                ),
+                (
+                    mtilde_solve_dir
+                    / (
+                        "g_mtilde_q1_interior_"
+                        "solve_rhs_total_coords.npy"
+                    )
+                ),
+                summary,
+            ]
+
+            output_missing = [
+                path
+                for path in outputs
+                if not path.exists()
+            ]
+
+            record["output_missing"] = [
+                str(path)
+                for path in output_missing
+            ]
+
+            summary_ok = False
+
+            if summary.exists():
+                summary_text = summary.read_text(
+                    errors="ignore",
+                )
+                summary_ok = (
+                    "RESULT = PASS"
+                    in summary_text
                 )
 
-                record["returncode"] = proc.returncode
-                record["stdout_tail"] = proc.stdout.splitlines()[-120:]
-                record["stderr_tail"] = proc.stderr.splitlines()[-120:]
+            record["summary_ok"] = (
+                summary_ok
+            )
 
-                lines.append("stdout tail:")
-                for x in record["stdout_tail"]:
-                    lines.append("  " + x)
+            if (
+                proc.returncode == 0
+                and not output_missing
+                and summary_ok
+            ):
+                record["result"] = "PASS"
+            else:
+                record["result"] = "FAIL"
 
-                if record["stderr_tail"]:
-                    lines.append("")
-                    lines.append("stderr tail:")
-                    for x in record["stderr_tail"]:
-                        lines.append("  " + x)
+            lines.extend([
+                (
+                    "returncode = "
+                    f"{proc.returncode}"
+                ),
+                (
+                    "output_missing = "
+                    f"{len(output_missing)}"
+                ),
+                (
+                    "summary_ok = "
+                    f"{summary_ok}"
+                ),
+                "",
+                (
+                    "RESULT = "
+                    f"{record['result']}"
+                ),
+            ])
 
-                summary = mtilde_solve_dir / "mtilde_q1_interior_solve_rhs_total_summary.txt"
+out_json = (
+    report_dir
+    / f"{transition}_solve_mtilde_generic.json"
+)
 
-                outputs = [
-                    mtilde_solve_dir / "Mtilde_q1_consistent_interior_38440_sparse.npz",
-                    mtilde_solve_dir / "Mtilde_q1_consistent_interior_38440_indices.npy",
-                    mtilde_solve_dir / "Mtilde_q1_consistent_interior_38440_coords.npy",
-                    mtilde_solve_dir / "g_lambda_mtilde_q1_interior_solve_rhs_total.npy",
-                    mtilde_solve_dir / "g_mu_mtilde_q1_interior_solve_rhs_total.npy",
-                    mtilde_solve_dir / "g_mtilde_q1_interior_solve_rhs_total_coords.npy",
-                    summary,
-                ]
+out_txt = (
+    report_dir
+    / f"{transition}_solve_mtilde_generic.txt"
+)
 
-                output_missing = [p for p in outputs if not p.exists()]
-                record["output_missing"] = [str(p) for p in output_missing]
+out_json.write_text(
+    json.dumps(
+        record,
+        indent=2,
+    ),
+    encoding="utf-8",
+)
 
-                summary_ok = False
-                if summary.exists():
-                    txt = summary.read_text(errors="ignore")
-                    summary_ok = "RESULT = PASS" in txt
+out_txt.write_text(
+    "\n".join(lines) + "\n",
+    encoding="utf-8",
+)
 
-                record["summary_ok"] = summary_ok
-
-                if proc.returncode == 0 and not output_missing and summary_ok:
-                    record["result"] = "PASS"
-                else:
-                    record["result"] = "FAIL"
-
-                lines.append("")
-                lines.append("Output check:")
-                for p in outputs:
-                    lines.append(f"  exists={p.exists()}  {p}")
-
-                lines.append("")
-                lines.append(f"summary_ok = {summary_ok}")
-                lines.append("")
-                lines.append(f"RESULT = {record['result']}")
-
-out_json = report_dir / f"{transition}_solve_mtilde_generic.json"
-out_txt = report_dir / f"{transition}_solve_mtilde_generic.txt"
-
-out_json.write_text(json.dumps(record, indent=2), encoding="utf-8")
-out_txt.write_text("\n".join(lines), encoding="utf-8")
 print("\n".join(lines))
 
-if record["result"] not in ["PASS", "PASS_DRYRUN"]:
+if record["result"] not in [
+    "PASS",
+    "PASS_DRYRUN",
+]:
     sys.exit(1)

@@ -81,7 +81,8 @@ def cmd_rhs_total():
 def cmd_mtilde():
     return [
         sys.executable,
-        "scripts/iteration_engine/solve_mtilde_generic.py",
+        "-m",
+        "scripts.iteration_engine.solve_mtilde_generic",
         "--iter-k", str(k),
         "--config", args.config,
         "--execute",
