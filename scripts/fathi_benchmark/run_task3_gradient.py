@@ -49,6 +49,7 @@ def cmd_manifests():
         sys.executable,
         "scripts/iteration_engine/build_rhs_manifests_generic_v2.py",
         "--iter-k", str(k),
+        "--config", args.config,
     ]
 
 def cmd_rhs(comp):
@@ -71,6 +72,7 @@ def cmd_rhs_total():
         sys.executable,
         "scripts/iteration_engine/assemble_rhs_total_generic.py",
         "--iter-k", str(k),
+        "--config", args.config,
     ]
 
 def cmd_mtilde():
@@ -78,6 +80,7 @@ def cmd_mtilde():
         sys.executable,
         "scripts/iteration_engine/solve_mtilde_generic.py",
         "--iter-k", str(k),
+        "--config", args.config,
         "--execute",
     ]
 
@@ -86,6 +89,7 @@ def cmd_audit():
         sys.executable,
         "scripts/iteration_engine/audit_mtilde_outputs_generic.py",
         "--iter-k", str(k),
+        "--config", args.config,
     ]
 
 command_map = {
