@@ -91,7 +91,8 @@ def cmd_mtilde():
 def cmd_audit():
     return [
         sys.executable,
-        "scripts/iteration_engine/audit_mtilde_outputs_generic.py",
+        "-m",
+        "scripts.iteration_engine.audit_mtilde_outputs_generic",
         "--iter-k", str(k),
         "--config", args.config,
     ]
