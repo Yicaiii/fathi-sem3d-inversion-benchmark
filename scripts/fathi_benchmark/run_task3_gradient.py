@@ -72,7 +72,8 @@ def cmd_rhs(comp):
 def cmd_rhs_total():
     return [
         sys.executable,
-        "scripts/iteration_engine/assemble_rhs_total_generic.py",
+        "-m",
+        "scripts.iteration_engine.assemble_rhs_total_generic",
         "--iter-k", str(k),
         "--config", args.config,
     ]
