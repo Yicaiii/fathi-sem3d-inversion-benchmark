@@ -1,5 +1,4 @@
 from pathlib import Path
-import os
 from datetime import datetime
 import argparse
 import json
@@ -9,28 +8,110 @@ import sys
 import h5py
 import numpy as np
 
-ROOT = Path(os.environ.get("FATHI_BENCHMARK_ROOT", str(Path.home() / "sem3d_fathi_clean"))).expanduser().resolve()
+from scripts.fathi_benchmark.runtime_paths import repository_root, resolve_path
+
+
+ROOT = repository_root()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--iter-k", type=int, required=True)
-parser.add_argument("--steps-mpa", nargs="+", type=float, default=[0.10, 0.25, 0.50, 1.00])
+parser.add_argument("--steps-mpa", nargs="+", type=float)
+parser.add_argument("--force", action="store_true")
 parser.add_argument("--config", default="benchmark_fathi_strict/config/benchmark_config.json")
 args = parser.parse_args()
 
-config = json.loads((ROOT / args.config).read_text())
+config_path = resolve_path(
+    args.config,
+    base=ROOT,
+)
+
+config = json.loads(
+    config_path.read_text(encoding="utf-8")
+)
+
+configured_steps = config.get(
+    "line_search_amplitudes_mpa"
+)
+
+if configured_steps is None:
+    line_search_config = config.get(
+        "line_search",
+        {},
+    )
+
+    if isinstance(line_search_config, dict):
+        configured_steps = line_search_config.get(
+            "amplitudes_MPa"
+        )
+
+steps_mpa = (
+    args.steps_mpa
+    if args.steps_mpa is not None
+    else configured_steps
+)
+
+if steps_mpa is None:
+    steps_mpa = [0.10, 0.25, 0.50, 1.00]
+
+steps_mpa = [
+    float(value)
+    for value in steps_mpa
+]
+
+if (
+    not steps_mpa
+    or not all(np.isfinite(steps_mpa))
+    or any(value <= 0.0 for value in steps_mpa)
+):
+    raise ValueError(
+        "Candidate step sizes must be finite, "
+        "strictly positive values."
+    )
+
+step_labels = [
+    f"{value:.2f}".replace(".", "p") + "MPa"
+    for value in steps_mpa
+]
+
+if len(step_labels) != len(set(step_labels)):
+    raise ValueError(
+        "Candidate step sizes produce duplicate "
+        "two-decimal candidate labels."
+    )
 
 k = args.iter_k
 kp1 = k + 1
 transition = f"iter_{k:03d}_to_iter_{kp1:03d}"
 shape = tuple(config.get("material_shape", [41, 33, 33]))
 
-state_in = ROOT / config["state_dir"] / f"iter_{k:03d}_state_v2_corrected.npz"
-run_result_root = ROOT / config["run_result_root"] / transition
+state_in = (
+    resolve_path(
+        config["state_dir"],
+        base=ROOT,
+    )
+    / f"iter_{k:03d}_state_v2_corrected.npz"
+)
+
+run_result_root = (
+    resolve_path(
+        config["run_result_root"],
+        base=ROOT,
+    )
+    / transition
+)
+
 mtilde_dir = run_result_root / "mtilde_solve"
 candidate_root = run_result_root / "candidates"
 candidate_root.mkdir(parents=True, exist_ok=True)
 
-parent_accepted = ROOT / config["run_data_root"] / f"iter_{k:03d}" / "accepted"
+parent_accepted = (
+    resolve_path(
+        config["run_data_root"],
+        base=ROOT,
+    )
+    / f"iter_{k:03d}"
+    / "accepted"
+)
 parent_h5_dir = parent_accepted / "mat/h5"
 
 gL_path = mtilde_dir / "g_lambda_mtilde_q1_interior_solve_rhs_total.npy"
@@ -150,16 +231,49 @@ flat_mu_parent = mu_parent.reshape(-1)
 records = []
 created = datetime.now().isoformat()
 
-for step_mpa in args.steps_mpa:
+for step_mpa in steps_mpa:
     step_pa = float(step_mpa) * 1e6
     label = f"{step_mpa:.2f}".replace(".", "p") + "MPa"
     cand_name = f"line_search_neg_mtilde_{label}"
     cand_dir = candidate_root / cand_name
     cand_h5_dir = cand_dir / "mat/h5"
+    state_npz = (
+        cand_dir
+        / f"{cand_name}_state_candidate.npz"
+    )
+
+    existing_outputs = [
+        output
+        for output in [
+            cand_h5_dir,
+            state_npz,
+        ]
+        if output.exists()
+    ]
+
+    if existing_outputs and not args.force:
+        print(
+            "Refusing to overwrite existing "
+            "candidate outputs:"
+        )
+
+        for output in existing_outputs:
+            print(" ", output)
+
+        print(
+            "Re-run with --force only after "
+            "confirming replacement is intended."
+        )
+        sys.exit(3)
+
     cand_dir.mkdir(parents=True, exist_ok=True)
 
     if cand_h5_dir.exists():
         shutil.rmtree(cand_h5_dir)
+
+    if state_npz.exists():
+        state_npz.unlink()
+
     shutil.copytree(parent_h5_dir, cand_h5_dir)
 
     flat_lambda = flat_lambda_parent.copy()
@@ -190,7 +304,6 @@ for step_mpa in args.steps_mpa:
     overwrite_h5_field(cand_h5_dir / "Mat_0_Mu.h5", mu_new, mu_dataset)
     overwrite_h5_field(cand_h5_dir / "Mat_0_Density.h5", density_new, density_dataset)
 
-    state_npz = cand_dir / f"{cand_name}_state_candidate.npz"
     np.savez_compressed(
         state_npz,
         lambda_field=lambda_new,
@@ -228,7 +341,10 @@ for step_mpa in args.steps_mpa:
     }
     records.append(rec)
 
-report_dir = ROOT / "benchmark_fathi_strict/reports/candidate_generation"
+report_dir = resolve_path(
+    "benchmark_fathi_strict/reports/candidate_generation",
+    base=ROOT,
+)
 report_dir.mkdir(parents=True, exist_ok=True)
 
 payload = {
@@ -243,6 +359,8 @@ payload = {
     "gradient_scale_lambda": scaleL,
     "gradient_scale_mu": scaleM,
     "candidate_root": str(candidate_root),
+    "steps_mpa": steps_mpa,
+    "force": bool(args.force),
     "records": records,
 }
 
