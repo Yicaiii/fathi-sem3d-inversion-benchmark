@@ -1,24 +1,22 @@
-from pathlib import Path
 import argparse
 import json
 import sys
-import os
 import shutil
 from datetime import datetime
 
-ROOT = Path(os.environ.get("FATHI_BENCHMARK_ROOT", str(Path.home() / "sem3d_fathi_clean"))).expanduser().resolve()
+from scripts.fathi_benchmark.runtime_paths import repository_root, resolve_path
+
+ROOT = repository_root()
 
 _context_parser = argparse.ArgumentParser(add_help=False)
 _context_parser.add_argument("--context", required=True)
 _context_args, _remaining_argv = _context_parser.parse_known_args()
 sys.argv = [sys.argv[0]] + _remaining_argv
 
-CTX = Path(_context_args.context)
-if not CTX.is_absolute():
-    CTX = ROOT / CTX
+CTX = resolve_path(_context_args.context, base=ROOT)
 ctx = json.loads(CTX.read_text())
 
-work = Path(ctx["work_root"])
+work = resolve_path(ctx["work_root"], base=ROOT)
 outdir = work / "strict_forward"
 selection_json = outdir / "450B_strict_forward_full_template_selection.json"
 
@@ -52,7 +50,10 @@ def ignore_func(dirpath, names):
     return ignored
 
 def copy_current_material(dst):
-    src_h5 = Path(ctx["input_accepted_dir"]) / "mat/h5"
+    src_h5 = resolve_path(
+        ctx["input_accepted_dir"],
+        base=ROOT,
+    ) / "mat/h5"
     dst_h5 = dst / "mat/h5"
     dst_h5.mkdir(parents=True, exist_ok=True)
 
@@ -70,8 +71,8 @@ def hardcoded_hits(d):
             continue
         text = p.read_text(errors="ignore")
         for token in [
-            "/home/crellamaybe/sem3d_fathi_clean/data/inversion_linear/iter_005",
-            "/home/crellamaybe/sem3d_fathi_clean/data/inversion_linear/iter_006",
+            "data/inversion_linear/iter_005",
+            "data/inversion_linear/iter_006",
             "longterm_capteurs_material_grid",
         ]:
             if token in text:
@@ -83,8 +84,14 @@ def main():
     ap.add_argument("--allow-overwrite", action="store_true")
     args = ap.parse_args()
 
-    src = Path(best["path"])
-    dst = Path(ctx["output_forward_batches_dir"]) / "strict_full_forward_000"
+    src = resolve_path(best["path"], base=ROOT)
+    dst = (
+        resolve_path(
+            ctx["output_forward_batches_dir"],
+            base=ROOT,
+        )
+        / "strict_full_forward_000"
+    )
 
     if not src.exists():
         raise RuntimeError(f"Selected source missing: {src}")

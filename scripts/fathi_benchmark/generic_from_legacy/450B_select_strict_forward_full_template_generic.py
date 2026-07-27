@@ -2,22 +2,21 @@ from pathlib import Path
 import json
 import argparse
 import sys
-import os
 from datetime import datetime
 
-ROOT = Path(os.environ.get("FATHI_BENCHMARK_ROOT", str(Path.home() / "sem3d_fathi_clean"))).expanduser().resolve()
+from scripts.fathi_benchmark.runtime_paths import repository_root, resolve_path
+
+ROOT = repository_root()
 
 _context_parser = argparse.ArgumentParser(add_help=False)
 _context_parser.add_argument("--context", required=True)
 _context_args, _remaining_argv = _context_parser.parse_known_args()
 sys.argv = [sys.argv[0]] + _remaining_argv
 
-CTX = Path(_context_args.context)
-if not CTX.is_absolute():
-    CTX = ROOT / CTX
+CTX = resolve_path(_context_args.context, base=ROOT)
 ctx = json.loads(CTX.read_text())
 
-work = Path(ctx["work_root"])
+work = resolve_path(ctx["work_root"], base=ROOT)
 outdir = work / "strict_forward"
 outdir.mkdir(parents=True, exist_ok=True)
 

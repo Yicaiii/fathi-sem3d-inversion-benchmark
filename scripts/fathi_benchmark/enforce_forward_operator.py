@@ -6,7 +6,7 @@ import json
 import re
 import sys
 
-from runtime_paths import repository_root, resolve_path
+from scripts.fathi_benchmark.runtime_paths import repository_root, resolve_path
 
 
 ROOT = repository_root()
