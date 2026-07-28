@@ -161,7 +161,7 @@ data/inversion_linear/iter_009/accepted/mat/h5/Mat_0_Density.h5
 Recommended repository structure:
 
 ```text
-sem3d_fathi_clean/
+fathi-sem3d-inversion-benchmark/
 ├── scripts/
 │   ├── fathi_benchmark/
 │   │   ├── create_iteration_context_generic.py
@@ -266,8 +266,10 @@ These traces are treated as the observed data. The true model is used only for g
 
 #### SEM3D executable
 
-```text
-/home/crellamaybe/SEM/build/SEM3D/sem3d.exe
+Set `SEM3D_EXE` to the local SEM3D binary, for example:
+
+```bash
+export SEM3D_EXE=/path/to/SEM3D/sem3d.exe
 ```
 
 #### Iteration context
@@ -380,7 +382,8 @@ create context
 ### Step 0. Activate environment
 
 ```bash
-cd ~/sem3d_fathi_clean
+export FATHI_BENCHMARK_ROOT=/path/to/fathi-sem3d-inversion-benchmark
+cd "$FATHI_BENCHMARK_ROOT"
 source .venv/bin/activate
 ```
 
@@ -676,9 +679,9 @@ Large SEM3D files should not be passed through PyMoniK payloads.
 They should remain on a shared filesystem:
 
 ```text
-~/sem3d_fathi_clean/data
-~/sem3d_fathi_clean/results
-~/sem3d_fathi_clean/benchmark_fathi_strict/reports
+$FATHI_BENCHMARK_ROOT/data
+$FATHI_BENCHMARK_ROOT/results
+$FATHI_BENCHMARK_ROOT/benchmark_fathi_strict/reports
 ```
 
 The payload only tells the worker where to find the context and what task to run.
@@ -865,7 +868,8 @@ and explicitly unignore them.
 For a new transition `iter_k -> iter_{k+1}`:
 
 ```bash
-cd ~/sem3d_fathi_clean
+export FATHI_BENCHMARK_ROOT=/path/to/fathi-sem3d-inversion-benchmark
+cd "$FATHI_BENCHMARK_ROOT"
 source .venv/bin/activate
 
 python3 scripts/fathi_benchmark/create_iteration_context_generic.py \
