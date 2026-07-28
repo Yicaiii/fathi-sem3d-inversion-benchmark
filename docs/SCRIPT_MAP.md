@@ -11,6 +11,94 @@ the existing numerical implementation during the refactoring phase.
 
 ---
 
+## Authoritative workflow classification
+
+This section is the authoritative classification for the current refactored branch.
+
+### Canonical public entry
+
+- `scripts/fathi_benchmark/run_iteration.py`
+
+This is the public resumed-iteration orchestrator. Its canonical order is:
+
+```text
+run_task0_prerequisites
+    -> run_task3_gradient
+    -> run_task4_candidates
+    -> run_task5_candidate
+    -> write_iteration_stage_report_v2
+```
+
+### Canonical stage wrappers
+
+- `scripts/fathi_benchmark/run_task0_prerequisites.py`
+- `scripts/fathi_benchmark/run_task3_gradient.py`
+- `scripts/fathi_benchmark/run_task4_candidates.py`
+- `scripts/fathi_benchmark/run_task5_candidate.py`
+
+These wrappers use package imports, package execution (`python -m ...`) and a shared
+resolved configuration path.
+
+### Canonical internal implementation modules
+
+The canonical runner currently reaches the following internal implementation families:
+
+- RHS and Mtilde:
+  `build_rhs_manifests_generic_v2.py`,
+  `424B_compute_rhs_component_from_traces.py`,
+  `assemble_rhs_total_generic.py`,
+  `solve_mtilde_generic.py`,
+  `audit_mtilde_outputs_generic.py`.
+- Candidate generation and preparation:
+  `audit_candidate_inputs.py`,
+  `generate_candidates_from_mtilde_gradient.py`,
+  `audit_candidates_generic.py`,
+  `prepare_candidate_forward_workspaces.py`.
+- Candidate evaluation:
+  `run_candidate_forward.py`,
+  `compute_candidate_misfit_v2.py`,
+  `accept_candidate_if_descent_v2.py`.
+- Reporting:
+  `write_iteration_stage_report_v2.py`.
+
+### Public utilities outside the current resumed-iteration chain
+
+The following runners remain useful, but they are not called by the current
+`run_iteration.py` chain:
+
+- `run_iteration_full_context.py`
+- `run_task1_strict_forward.py`
+- `run_task1b_prepare_strict_forward.py`
+- `run_task2_residual_generation.py`
+- `run_task2b_prepare_adjoint.py`
+- `run_task2c_adjoint_batch.py`
+
+They represent preparation or from-scratch building blocks that still require separate
+validation before the repository can claim a fully standalone end-to-end iteration.
+
+### Legacy or superseded implementations
+
+The following scripts are not reachable from the canonical runner and must not be used
+as the default workflow:
+
+- `scripts/iteration_engine/refresh_benchmark_status.py`
+- `scripts/iteration_engine/compute_candidate_misfit.py`
+- `scripts/iteration_engine/accept_candidate_if_descent.py`
+
+Their retained presence is for historical review only until a dedicated deletion commit
+is approved.
+
+### Import and path rule
+
+Canonical Python entry points must import runtime helpers through:
+
+```python
+from scripts.fathi_benchmark.runtime_paths import ...
+```
+
+Do not use `from runtime_paths import ...`, fixed home-directory paths, or source-file
+existence checks based on runtime-data roots.
+
 ## 1. Public entry points
 
 These are the scripts that a user should normally execute directly.

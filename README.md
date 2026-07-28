@@ -4,6 +4,50 @@
 
 ---
 
+## Canonical workflow (current public interface)
+
+The authoritative public entry point for the current benchmark workflow is:
+
+```bash
+python -m scripts.fathi_benchmark.run_iteration --iter-k K --stage plan
+```
+
+The current engine is a **resumed iteration orchestrator**, not yet a fully standalone
+from-scratch inversion runner. It assumes that strict forward, residual and adjoint
+prerequisites for the transition already exist.
+
+The canonical stage order is:
+
+```text
+Task 0 prerequisites
+    -> Task 3 gradient and Mtilde solve
+    -> Task 4 candidate generation and workspace preparation
+    -> Task 5 candidate forward, misfit and acceptance
+    -> iteration status report
+```
+
+A safe dry-run plan is:
+
+```bash
+python -m scripts.fathi_benchmark.run_iteration \
+  --iter-k 0 \
+  --stage plan \
+  --candidate line_search_neg_mtilde_1p00MPa \
+  --config benchmark_fathi_strict/config/benchmark_config.json
+```
+
+Actual execution requires the explicit `--execute` flag. Candidate acceptance controls
+are also explicit:
+
+```text
+--allow-non-descent
+--overwrite-existing
+```
+
+All canonical child commands use package invocation (`python -m ...`) and receive the
+same resolved `--config` path. Runtime roots may be supplied through the configuration
+file and `FATHI_BENCHMARK_ROOT`; source files are not located through runtime-data paths.
+
 ## 1. Project Overview
 
 This repository contains a reusable benchmark workflow for SEM3D-based elastic parameter inversion.
