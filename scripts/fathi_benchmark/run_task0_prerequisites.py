@@ -1,11 +1,14 @@
-from pathlib import Path
 from datetime import datetime
 import argparse
 import json
 import sys
-import os
 
-ROOT = Path(os.environ.get("FATHI_BENCHMARK_ROOT", str(Path.home() / "sem3d_fathi_clean"))).expanduser().resolve()
+from scripts.fathi_benchmark.runtime_paths import (
+    repository_root,
+    resolve_path,
+)
+
+ROOT = repository_root()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--iter-k", type=int, required=True)
@@ -26,14 +29,33 @@ parser.add_argument("--execute", action="store_true")
 parser.add_argument("--config", default="benchmark_fathi_strict/config/benchmark_config.json")
 args = parser.parse_args()
 
-config = json.loads((ROOT / args.config).read_text(encoding="utf-8"))
+config_path = resolve_path(
+    args.config,
+    base=ROOT,
+)
+
+config = json.loads(
+    config_path.read_text(encoding="utf-8")
+)
 
 k = args.iter_k
 kp1 = k + 1
 transition = f"iter_{k:03d}_to_iter_{kp1:03d}"
 
-run_data_root = ROOT / config["run_data_root"] / f"iter_{kp1:03d}"
-run_result_root = ROOT / config["run_result_root"] / transition
+run_data_root = (
+    resolve_path(
+        config["run_data_root"],
+        base=ROOT,
+    )
+    / f"iter_{kp1:03d}"
+)
+run_result_root = (
+    resolve_path(
+        config["run_result_root"],
+        base=ROOT,
+    )
+    / transition
+)
 
 strict_forward_dir = run_data_root / "forward_dudx_mgcap_full_batches/strict_full_forward_000"
 strict_forward_traces = strict_forward_dir / "traces"
@@ -42,7 +64,14 @@ residual_h5 = run_result_root / "residual_sources/454B_strict_residual_timeserie
 residual_summary_txt = run_result_root / "residual_sources/454B_strict_residual_timeseries_summary.txt"
 
 adjoint_base = run_data_root / "adjoint_full_grid_batches"
-adjoint_audit = ROOT / f"benchmark_fathi_strict/reports/phaseA_task2C_adjoint_complete/{transition}_adjoint_complete_audit.txt"
+adjoint_audit = resolve_path(
+    (
+        "benchmark_fathi_strict/reports/"
+        "phaseA_task2C_adjoint_complete/"
+        f"{transition}_adjoint_complete_audit.txt"
+    ),
+    base=ROOT,
+)
 
 def count_capteurs(trace_dir):
     if not trace_dir.exists():
@@ -154,7 +183,10 @@ sequence = [
 
 created = datetime.now().isoformat()
 
-report_dir = ROOT / "benchmark_fathi_strict/reports/task_wrappers"
+report_dir = resolve_path(
+    "benchmark_fathi_strict/reports/task_wrappers",
+    base=ROOT,
+)
 report_dir.mkdir(parents=True, exist_ok=True)
 
 if args.stage == "plan":

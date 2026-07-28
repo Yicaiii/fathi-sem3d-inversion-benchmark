@@ -1,12 +1,15 @@
-from pathlib import Path
-import os
 from datetime import datetime
 import argparse
 import json
 import subprocess
 import sys
 
-ROOT = Path(os.environ.get("FATHI_BENCHMARK_ROOT", str(Path.home() / "sem3d_fathi_clean"))).expanduser().resolve()
+from scripts.fathi_benchmark.runtime_paths import (
+    repository_root,
+    resolve_path,
+)
+
+ROOT = repository_root()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--iter-k", type=int, required=True)
@@ -33,13 +36,29 @@ k = args.iter_k
 kp1 = k + 1
 transition = f"iter_{k:03d}_to_iter_{kp1:03d}"
 
-config = json.loads((ROOT / args.config).read_text())
+config_path = resolve_path(
+    args.config,
+    base=ROOT,
+)
 
-run_result_root = ROOT / config["run_result_root"] / transition
+config = json.loads(
+    config_path.read_text(encoding="utf-8")
+)
+
+run_result_root = (
+    resolve_path(
+        config["run_result_root"],
+        base=ROOT,
+    )
+    / transition
+)
 manifest_dir = run_result_root / "rhs_manifests"
 component_rhs_dir = run_result_root / "component_rhs"
 
-report_dir = ROOT / "benchmark_fathi_strict/reports/task_wrappers"
+report_dir = resolve_path(
+    "benchmark_fathi_strict/reports/task_wrappers",
+    base=ROOT,
+)
 report_dir.mkdir(parents=True, exist_ok=True)
 
 created = datetime.now().isoformat()
@@ -47,21 +66,30 @@ created = datetime.now().isoformat()
 def cmd_manifests():
     return [
         sys.executable,
-        "scripts/iteration_engine/build_rhs_manifests_generic_v2.py",
+        "-m",
+        "scripts.iteration_engine.build_rhs_manifests_generic_v2",
         "--iter-k", str(k),
+        "--config", args.config,
     ]
 
 def cmd_rhs(comp):
     return [
         sys.executable,
-        "scripts/longterm/424B_compute_rhs_component_from_traces.py",
+        "-m",
+        "scripts.longterm.424B_compute_rhs_component_from_traces",
         "--component", comp,
         "--forward-manifest",
-        str((manifest_dir / "forward_full_grid_trace_manifest.csv").relative_to(ROOT)),
+        str(
+            manifest_dir
+            / "forward_full_grid_trace_manifest.csv"
+        ),
         "--adjoint-manifest",
-        str((manifest_dir / f"adjoint_{comp}_full_grid_trace_manifest.csv").relative_to(ROOT)),
+        str(
+            manifest_dir
+            / f"adjoint_{comp}_full_grid_trace_manifest.csv"
+        ),
         "--out-dir",
-        str(component_rhs_dir.relative_to(ROOT)),
+        str(component_rhs_dir),
         "--label",
         "full_grid_trace",
     ]
@@ -69,23 +97,29 @@ def cmd_rhs(comp):
 def cmd_rhs_total():
     return [
         sys.executable,
-        "scripts/iteration_engine/assemble_rhs_total_generic.py",
+        "-m",
+        "scripts.iteration_engine.assemble_rhs_total_generic",
         "--iter-k", str(k),
+        "--config", args.config,
     ]
 
 def cmd_mtilde():
     return [
         sys.executable,
-        "scripts/iteration_engine/solve_mtilde_generic.py",
+        "-m",
+        "scripts.iteration_engine.solve_mtilde_generic",
         "--iter-k", str(k),
+        "--config", args.config,
         "--execute",
     ]
 
 def cmd_audit():
     return [
         sys.executable,
-        "scripts/iteration_engine/audit_mtilde_outputs_generic.py",
+        "-m",
+        "scripts.iteration_engine.audit_mtilde_outputs_generic",
         "--iter-k", str(k),
+        "--config", args.config,
     ]
 
 command_map = {

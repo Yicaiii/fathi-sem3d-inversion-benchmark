@@ -1,12 +1,15 @@
-from pathlib import Path
-import os
 from datetime import datetime
 import argparse
 import json
 import subprocess
 import sys
 
-ROOT = Path(os.environ.get("FATHI_BENCHMARK_ROOT", str(Path.home() / "sem3d_fathi_clean"))).expanduser().resolve()
+from scripts.fathi_benchmark.runtime_paths import (
+    repository_root,
+    resolve_path,
+)
+
+ROOT = repository_root()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--iter-k", type=int, required=True)
@@ -24,16 +27,34 @@ parser.add_argument(
 )
 parser.add_argument("--execute", action="store_true")
 parser.add_argument("--config", default="benchmark_fathi_strict/config/benchmark_config.json")
+parser.add_argument("--force", action="store_true")
 args = parser.parse_args()
 
 k = args.iter_k
 kp1 = k + 1
 transition = f"iter_{k:03d}_to_iter_{kp1:03d}"
 
-config = json.loads((ROOT / args.config).read_text())
-run_result_root = ROOT / config["run_result_root"] / transition
+config_path = resolve_path(
+    args.config,
+    base=ROOT,
+)
 
-report_dir = ROOT / "benchmark_fathi_strict/reports/task_wrappers"
+config = json.loads(
+    config_path.read_text(encoding="utf-8")
+)
+
+run_result_root = (
+    resolve_path(
+        config["run_result_root"],
+        base=ROOT,
+    )
+    / transition
+)
+
+report_dir = resolve_path(
+    "benchmark_fathi_strict/reports/task_wrappers",
+    base=ROOT,
+)
 report_dir.mkdir(parents=True, exist_ok=True)
 
 created = datetime.now().isoformat()
@@ -41,30 +62,54 @@ created = datetime.now().isoformat()
 def cmd_audit_inputs():
     return [
         sys.executable,
-        "scripts/iteration_engine/audit_candidate_inputs.py",
+        "-m",
+        "scripts.iteration_engine.audit_candidate_inputs",
         "--iter-k", str(k),
+        "--config", str(config_path),
     ]
 
 def cmd_generate():
-    return [
+    command = [
         sys.executable,
-        "scripts/iteration_engine/generate_candidates_from_mtilde_gradient.py",
+        "-m",
+        (
+            "scripts.iteration_engine."
+            "generate_candidates_from_mtilde_gradient"
+        ),
         "--iter-k", str(k),
+        "--config", str(config_path),
     ]
+
+    if args.force:
+        command.append("--force")
+
+    return command
 
 def cmd_audit():
     return [
         sys.executable,
-        "scripts/iteration_engine/audit_candidates_generic.py",
+        "-m",
+        "scripts.iteration_engine.audit_candidates_generic",
         "--iter-k", str(k),
+        "--config", str(config_path),
     ]
 
 def cmd_prepare_workspaces():
-    return [
+    command = [
         sys.executable,
-        "scripts/iteration_engine/prepare_candidate_forward_workspaces.py",
+        "-m",
+        (
+            "scripts.iteration_engine."
+            "prepare_candidate_forward_workspaces"
+        ),
         "--iter-k", str(k),
+        "--config", str(config_path),
     ]
+
+    if args.force:
+        command.append("--force")
+
+    return command
 
 command_map = {
     "audit_inputs": cmd_audit_inputs(),

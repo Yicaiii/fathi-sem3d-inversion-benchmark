@@ -4,6 +4,50 @@
 
 ---
 
+## Canonical workflow (current public interface)
+
+The authoritative public entry point for the current benchmark workflow is:
+
+```bash
+python -m scripts.fathi_benchmark.run_iteration --iter-k K --stage plan
+```
+
+The current engine is a **resumed iteration orchestrator**, not yet a fully standalone
+from-scratch inversion runner. It assumes that strict forward, residual and adjoint
+prerequisites for the transition already exist.
+
+The canonical stage order is:
+
+```text
+Task 0 prerequisites
+    -> Task 3 gradient and Mtilde solve
+    -> Task 4 candidate generation and workspace preparation
+    -> Task 5 candidate forward, misfit and acceptance
+    -> iteration status report
+```
+
+A safe dry-run plan is:
+
+```bash
+python -m scripts.fathi_benchmark.run_iteration \
+  --iter-k 0 \
+  --stage plan \
+  --candidate line_search_neg_mtilde_1p00MPa \
+  --config benchmark_fathi_strict/config/benchmark_config.json
+```
+
+Actual execution requires the explicit `--execute` flag. Candidate acceptance controls
+are also explicit:
+
+```text
+--allow-non-descent
+--overwrite-existing
+```
+
+All canonical child commands use package invocation (`python -m ...`) and receive the
+same resolved `--config` path. Runtime roots may be supplied through the configuration
+file and `FATHI_BENCHMARK_ROOT`; source files are not located through runtime-data paths.
+
 ## 1. Project Overview
 
 This repository contains a reusable benchmark workflow for SEM3D-based elastic parameter inversion.
@@ -117,7 +161,7 @@ data/inversion_linear/iter_009/accepted/mat/h5/Mat_0_Density.h5
 Recommended repository structure:
 
 ```text
-sem3d_fathi_clean/
+fathi-sem3d-inversion-benchmark/
 ├── scripts/
 │   ├── fathi_benchmark/
 │   │   ├── create_iteration_context_generic.py
@@ -222,8 +266,10 @@ These traces are treated as the observed data. The true model is used only for g
 
 #### SEM3D executable
 
-```text
-/home/crellamaybe/SEM/build/SEM3D/sem3d.exe
+Set `SEM3D_EXE` to the local SEM3D binary, for example:
+
+```bash
+export SEM3D_EXE=/path/to/SEM3D/sem3d.exe
 ```
 
 #### Iteration context
@@ -336,7 +382,8 @@ create context
 ### Step 0. Activate environment
 
 ```bash
-cd ~/sem3d_fathi_clean
+export FATHI_BENCHMARK_ROOT=/path/to/fathi-sem3d-inversion-benchmark
+cd "$FATHI_BENCHMARK_ROOT"
 source .venv/bin/activate
 ```
 
@@ -632,9 +679,9 @@ Large SEM3D files should not be passed through PyMoniK payloads.
 They should remain on a shared filesystem:
 
 ```text
-~/sem3d_fathi_clean/data
-~/sem3d_fathi_clean/results
-~/sem3d_fathi_clean/benchmark_fathi_strict/reports
+$FATHI_BENCHMARK_ROOT/data
+$FATHI_BENCHMARK_ROOT/results
+$FATHI_BENCHMARK_ROOT/benchmark_fathi_strict/reports
 ```
 
 The payload only tells the worker where to find the context and what task to run.
@@ -821,7 +868,8 @@ and explicitly unignore them.
 For a new transition `iter_k -> iter_{k+1}`:
 
 ```bash
-cd ~/sem3d_fathi_clean
+export FATHI_BENCHMARK_ROOT=/path/to/fathi-sem3d-inversion-benchmark
+cd "$FATHI_BENCHMARK_ROOT"
 source .venv/bin/activate
 
 python3 scripts/fathi_benchmark/create_iteration_context_generic.py \
@@ -893,3 +941,28 @@ Result:
 Next engineering goal:
   connect the validated context-driven task graph to PyMoniK / ArmoniK
 ```
+
+---
+
+## Canonical Fathi 80 MPa initialization
+
+The strict Fathi validation starts from a homogeneous model with
+lambda = mu = 80 MPa, Kappa = 133.333333 MPa and density = 2000
+kg/m3.
+
+The canonical forward operator contains nine vertical impulse sources
+on a 3 x 3 surface grid. The observed objective uses 225 physical
+receivers, while the forward/adjoint gradient workflow uses 38,440
+full-grid stations.
+
+Strict-forward preparation automatically preserves the source
+operator from the accepted parent model. A full-grid receiver
+template is never allowed to replace the nine-source operator.
+
+See:
+
+- `docs/FATHI80_INITIAL.md`
+- `docs/TV_REGULARIZATION_WORKFLOW.md`
+
+Large SEM3D traces, snapshots and inversion workspaces are local
+runtime data and are not stored in Git.

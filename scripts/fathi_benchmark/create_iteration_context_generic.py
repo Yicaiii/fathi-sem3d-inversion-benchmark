@@ -1,11 +1,11 @@
-from pathlib import Path
 from datetime import datetime
+
+from runtime_paths import repository_root, sem3d_executable
 import argparse
 import json
-import os
 import sys
 
-ROOT = Path(os.environ.get("FATHI_BENCHMARK_ROOT", str(Path.home() / "sem3d_fathi_clean"))).expanduser().resolve()
+ROOT = repository_root()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--iter-k", type=int, required=True)
@@ -72,7 +72,7 @@ context = {
     "candidate_forward_workspaces_dir": str((output_iter_root / "candidate_forward_workspaces").relative_to(ROOT)),
     "candidate_misfit_dir": str((transition_result_root / "candidate_misfits").relative_to(ROOT)),
 
-    "sem3d_exe": cfg.get("sem3d_exe", str(Path.home() / "SEM/build/SEM3D/sem3d.exe")),
+    "sem3d_exe": str(sem3d_executable(cfg, repo_root=ROOT)),
     "mpi_cores": cfg.get("mpi_cores", 12),
 
     "line_search_candidates": cfg.get("line_search", {}).get("amplitudes_MPa", [0.10, 0.25, 0.50, 1.00]),

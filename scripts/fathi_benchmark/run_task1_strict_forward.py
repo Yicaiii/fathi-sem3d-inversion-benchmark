@@ -4,9 +4,10 @@ import argparse
 import json
 import subprocess
 import sys
-import os
 
-ROOT = Path(os.environ.get("FATHI_BENCHMARK_ROOT", str(Path.home() / "sem3d_fathi_clean"))).expanduser().resolve()
+from runtime_paths import repository_root, sem3d_executable
+
+ROOT = repository_root()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--context", default=None)
@@ -51,9 +52,10 @@ iter_kp1 = int(ctx.get("iter_kp1", iter_k + 1))
 
 np_count = args.np or int(ctx.get("mpi_cores", 12))
 
-sem3d_exe = Path(ctx.get("sem3d_exe", str(Path.home() / "SEM/build/SEM3D/sem3d.exe")))
-if not sem3d_exe.is_absolute():
-    sem3d_exe = ROOT / sem3d_exe
+sem3d_exe = sem3d_executable(
+    ctx,
+    repo_root=ROOT,
+)
 
 workspace_raw = ctx.get("strict_forward_workspace")
 traces_raw = ctx.get("strict_forward_traces")

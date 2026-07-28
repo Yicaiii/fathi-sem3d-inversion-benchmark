@@ -1,28 +1,39 @@
-from pathlib import Path
 import json
 import argparse
-import os
 import csv
 import re
 import numpy as np
 import h5py
 from datetime import datetime
 
-ROOT = Path(os.environ.get("FATHI_BENCHMARK_ROOT", str(Path.home() / "sem3d_fathi_clean"))).expanduser().resolve()
+from scripts.fathi_benchmark.runtime_paths import repository_root, resolve_path
+
+ROOT = repository_root()
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--context", required=True)
 args = ap.parse_args()
 
-CTX = Path(args.context)
-if not CTX.is_absolute():
-    CTX = ROOT / CTX
+CTX = resolve_path(args.context, base=ROOT)
 ctx = json.loads(CTX.read_text())
 
-true_dir = Path(ctx["true_observed_traces"])
-sim_dir = Path(ctx["output_forward_batches_dir"]) / "strict_full_forward_000" / "traces"
+true_dir = resolve_path(
+    ctx["true_observed_traces"],
+    base=ROOT,
+)
+sim_dir = (
+    resolve_path(
+        ctx["output_forward_batches_dir"],
+        base=ROOT,
+    )
+    / "strict_full_forward_000"
+    / "traces"
+)
 
-outdir = Path(ctx["work_root"]) / "residual_sources"
+outdir = (
+    resolve_path(ctx["work_root"], base=ROOT)
+    / "residual_sources"
+)
 outdir.mkdir(parents=True, exist_ok=True)
 
 def is_uu_name(name):

@@ -1,25 +1,28 @@
-from pathlib import Path
 import json
 import argparse
-import os
 import csv
 import numpy as np
 import h5py
 from datetime import datetime
 
-ROOT = Path(os.environ.get("FATHI_BENCHMARK_ROOT", str(Path.home() / "sem3d_fathi_clean"))).expanduser().resolve()
+from scripts.fathi_benchmark.runtime_paths import repository_root, resolve_path
+
+ROOT = repository_root()
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--context", required=True)
 args = ap.parse_args()
 
-CTX = Path(args.context)
-if not CTX.is_absolute():
-    CTX = ROOT / CTX
+CTX = resolve_path(args.context, base=ROOT)
 ctx = json.loads(CTX.read_text())
 
-manifest_csv = Path(ctx["work_root"]) / "residual_sources/454A_strict_forward_residual_manifest.csv"
-outdir = Path(ctx["work_root"]) / "residual_sources"
+work_root = resolve_path(ctx["work_root"], base=ROOT)
+manifest_csv = (
+    work_root
+    / "residual_sources"
+    / "454A_strict_forward_residual_manifest.csv"
+)
+outdir = work_root / "residual_sources"
 outdir.mkdir(parents=True, exist_ok=True)
 
 out_h5 = outdir / "454B_strict_residual_timeseries.h5"

@@ -1,0 +1,115 @@
+{
+  "name": "fathi_layered_homogeneous_80MPa_initial",
+  "role": "canonical_initial_state",
+  "description": "Canonical homogeneous initial model for the Fathi layered-medium validation and TV-extension workflow.",
+  "material": {
+    "lambda_pa": 80000000.0,
+    "mu_pa": 80000000.0,
+    "kappa_pa": 133333333.33333333,
+    "kappa_definition": "kappa = lambda + (2/3) * mu",
+    "density_kg_m3": 2000.0
+  },
+  "material_grid": {
+    "shape": [
+      41,
+      33,
+      33
+    ],
+    "array_order": "field[iz, iy, ix]",
+    "flatten_order": "C",
+    "x_min_global_m": [
+      -20.0,
+      -20.0,
+      -50.0
+    ],
+    "x_max_global_m": [
+      20.0,
+      20.0,
+      0.0
+    ]
+  },
+  "fathi_validation": {
+    "observed_traces_dir": "data/50_true_layered_3x3source/traces",
+    "number_of_physical_receivers": 225,
+    "simulation_time_s": 0.45,
+    "expected_trace_files": 5
+  },
+  "runtime_outputs": {
+    "accepted_dir": "data/inversion_tv_fathi80/iter_000/accepted",
+    "state_file": "results/fathi_loop_tv_fathi80/states_corrected/iter_000_state_v2_corrected.npz"
+  },
+  "template_policy": {
+    "template_is_runtime_input": true,
+    "template_is_committed_to_git": false,
+    "note": "Supply a local SEM3D template workspace to the bootstrap command. Large mesh, traces and snapshots are not stored in Git."
+  },
+  "validated_reference": {
+    "reference_workspace": "Provided locally through the bootstrap --template argument",
+    "expected_initial_absolute_misfit": 3.0878221864805686e-21,
+    "expected_initial_relative_misfit": 0.0013567431264890747
+  },
+  "forward_operator": {
+    "name": "fathi_surface_3x3_sources_fullgrid_receivers",
+    "policy": "Preserve the source operator from the current accepted model while retaining the full-grid receiver template.",
+    "source_count": 9,
+    "source_coordinates_m": [
+      [
+        -12.5,
+        -12.5,
+        0.0
+      ],
+      [
+        0.0,
+        -12.5,
+        0.0
+      ],
+      [
+        12.5,
+        -12.5,
+        0.0
+      ],
+      [
+        -12.5,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        12.5,
+        0.0,
+        0.0
+      ],
+      [
+        -12.5,
+        12.5,
+        0.0
+      ],
+      [
+        0.0,
+        12.5,
+        0.0
+      ],
+      [
+        12.5,
+        12.5,
+        0.0
+      ]
+    ],
+    "source_type": "impulse",
+    "source_direction": [
+      0.0,
+      0.0,
+      1.0
+    ],
+    "time_function_file": "gaussian_stf.txt",
+    "station_file": "stations.txt",
+    "physical_observed_receiver_count": 225,
+    "full_grid_station_count": 38440,
+    "require_dudx": true,
+    "save_snapshots": false
+  }
+}

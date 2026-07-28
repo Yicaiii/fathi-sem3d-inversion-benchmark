@@ -1,0 +1,116 @@
+{
+  "benchmark_name": "Fathi layered elastic inversion benchmark",
+  "benchmark_role": "strict_iterative_engine",
+  "benchmark_root": "/home/crellamaybe/sem3d_fathi_clean",
+  "true_observed_traces_dir": "data/60_true_layered_h5_T045/traces",
+  "true_material_dir": "data/60_true_layered_h5_T045/mat/h5",
+  "sem3d_exe": "/home/crellamaybe/SEM/build/SEM3D/sem3d.exe",
+  "mpi_cores": 12,
+  "state_dir": "results/fathi_loop_v2/states_corrected",
+  "run_data_root": "data/inversion_linear",
+  "run_result_root": "results/fathi_loop_v2",
+  "material_shape": [
+    41,
+    33,
+    33
+  ],
+  "interior_gradient_size": 38440,
+  "time_interpolation_target": "true_observed_time_grid",
+  "residual_definition": "synthetic_minus_true",
+  "adjoint_source_time_rule": "time_reversed_residual",
+  "line_search_amplitudes_mpa": [
+    0.1,
+    0.25,
+    0.5,
+    1.0
+  ],
+  "current_verified_checkpoint": {
+    "last_completed_state": 8,
+    "last_completed_transition": "iter_007_to_iter_008",
+    "last_completed_status": "PASS_ACCEPTED",
+    "accepted_candidate": "line_search_neg_mtilde_1p00MPa",
+    "parent_J": 3.826865313556896e-19,
+    "candidate_J": 3.826397231223554e-19,
+    "delta_J": -4.6808233334203494e-23,
+    "descent": true,
+    "state_path": "results/fathi_loop_v2/states_corrected/iter_008_state_v2_corrected.npz",
+    "accepted_dir": "data/inversion_linear/iter_008/accepted",
+    "validated_stages_local": [
+      "S01 strict forward",
+      "S02 residual sources",
+      "S03-S05 adjoint 30/30",
+      "S06-S08 RHS_x_y_z",
+      "S09 RHS_total",
+      "S10 Mtilde solve",
+      "S11 candidates",
+      "S12 candidate forward and misfit",
+      "S13 accept"
+    ],
+    "canonical_engine_wrappers": {
+      "task3_gradient": "scripts/fathi_benchmark/run_task3_gradient.py",
+      "task4_candidates": "scripts/fathi_benchmark/run_task4_candidates.py",
+      "task5_candidate": "scripts/fathi_benchmark/run_task5_candidate.py",
+      "run_iteration": "scripts/fathi_benchmark/run_iteration.py"
+    }
+  },
+  "engine_scope": {
+    "package_type": "resumed_engine_light",
+    "automation_scope": "post_adjoint_resumed_iteration",
+    "current_run_iteration_all_means": "gradient -> candidates -> task5 -> status",
+    "assumes_existing_outputs": [
+      "strict_forward_traces",
+      "residual_sources",
+      "adjoint_x_y_z_traces"
+    ],
+    "not_yet_full_standalone": true,
+    "missing_standalone_stages": [
+      "strict_forward",
+      "residual_generation",
+      "prepare_adjoint",
+      "run_adjoint_batches",
+      "audit_adjoint"
+    ]
+  },
+  "active_transition": {
+    "next_transition": "iter_008_to_iter_009",
+    "status": "not_started",
+    "parent_state": "results/fathi_loop_v2/states_corrected/iter_008_state_v2_corrected.npz"
+  },
+  "armonik_integration": {
+    "status": "local_payload_prototype_passed",
+    "payload_policy": "small_json_parameters_only",
+    "large_data_policy": "shared_filesystem_or_object_storage_paths_only",
+    "root_env_variable": "FATHI_BENCHMARK_ROOT",
+    "validated_payload_tasks": [
+      "candidate_misfit"
+    ],
+    "next_payload_tasks": [
+      "candidate_forward",
+      "rhs_component",
+      "adjoint_batch",
+      "strict_forward",
+      "residual_generation"
+    ]
+  },
+  "checkpoint_history": [
+    {
+      "created": "2026-07-02T15:46:23.498346",
+      "event": "config_updated_after_iter008_acceptance",
+      "previous_current_verified_checkpoint": {
+        "last_completed_state": 7,
+        "current_active_transition": "iter_007_to_iter_008",
+        "completed_stages": [
+          "S01_strict_full_grid_forward",
+          "S02_residual_source_generation",
+          "S03_S05_adjoint_batch_preparation"
+        ],
+        "not_yet_completed": [
+          "S03_S05_adjoint_execution",
+          "S06_S09_RHS_assembly",
+          "S10_Mtilde_solve",
+          "S11_S13_candidate_line_search_accept_iter008"
+        ]
+      }
+    }
+  ]
+}

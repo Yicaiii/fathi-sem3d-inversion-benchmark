@@ -1,12 +1,12 @@
-from pathlib import Path
-import os
 from datetime import datetime
 import argparse
 import json
 import subprocess
 import sys
 
-ROOT = Path(os.environ.get("FATHI_BENCHMARK_ROOT", str(Path.home() / "sem3d_fathi_clean"))).expanduser().resolve()
+from scripts.fathi_benchmark.runtime_paths import repository_root, resolve_path
+
+ROOT = repository_root()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--iter-k", type=int, required=True)
@@ -18,14 +18,37 @@ parser.add_argument(
 )
 parser.add_argument("--execute", action="store_true")
 parser.add_argument("--force-forward", action="store_true")
+parser.add_argument(
+    "--allow-non-descent",
+    action="store_true",
+)
+parser.add_argument(
+    "--overwrite-existing",
+    action="store_true",
+)
 parser.add_argument("--np", type=int, default=12)
+parser.add_argument(
+    "--config",
+    default=(
+        "benchmark_fathi_strict/config/"
+        "benchmark_config.json"
+    ),
+)
 args = parser.parse_args()
+
+config_path = resolve_path(
+    args.config,
+    base=ROOT,
+)
 
 k = args.iter_k
 kp1 = k + 1
 transition = f"iter_{k:03d}_to_iter_{kp1:03d}"
 
-report_dir = ROOT / "benchmark_fathi_strict/reports/task5_wrappers"
+report_dir = resolve_path(
+    "benchmark_fathi_strict/reports/task5_wrappers",
+    base=ROOT,
+)
 report_dir.mkdir(parents=True, exist_ok=True)
 
 created = datetime.now().isoformat()
@@ -53,32 +76,58 @@ def run_cmd(cmd, name):
 def cmd_forward():
     cmd = [
         sys.executable,
-        "scripts/iteration_engine/run_candidate_forward.py",
+        "-m",
+        (
+            "scripts.iteration_engine."
+            "run_candidate_forward"
+        ),
         "--iter-k", str(k),
         "--candidate", args.candidate,
         "--np", str(args.np),
+        "--config", str(config_path),
     ]
+
     if args.execute:
         cmd.append("--execute")
+
     if args.force_forward:
         cmd.append("--force")
+
     return cmd
 
 def cmd_misfit_v2():
     return [
         sys.executable,
-        "scripts/iteration_engine/compute_candidate_misfit_v2.py",
+        "-m",
+        (
+            "scripts.iteration_engine."
+            "compute_candidate_misfit_v2"
+        ),
         "--iter-k", str(k),
         "--candidate", args.candidate,
+        "--config", str(config_path),
     ]
 
 def cmd_accept_v2():
-    return [
+    cmd = [
         sys.executable,
-        "scripts/iteration_engine/accept_candidate_if_descent_v2.py",
+        "-m",
+        (
+            "scripts.iteration_engine."
+            "accept_candidate_if_descent_v2"
+        ),
         "--iter-k", str(k),
         "--candidate", args.candidate,
+        "--config", str(config_path),
     ]
+
+    if args.allow_non_descent:
+        cmd.append("--allow-non-descent")
+
+    if args.overwrite_existing:
+        cmd.append("--overwrite-existing")
+
+    return cmd
 
 plan = {
     "created": created,
@@ -140,6 +189,19 @@ print("\n".join(lines))
 
 if args.stage == "plan":
     print("RESULT = PASS_PLAN")
+    sys.exit(0)
+
+if not args.execute:
+    print("")
+    print(
+        "DRY RUN ONLY. No Task 5 child "
+        "was executed."
+    )
+    print(
+        "Use --execute to run the selected "
+        "Task 5 stage."
+    )
+    print("RESULT = PASS_DRYRUN")
     sys.exit(0)
 
 if args.stage in ["forward", "all"]:

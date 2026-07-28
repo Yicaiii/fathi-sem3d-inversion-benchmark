@@ -1,28 +1,35 @@
-from pathlib import Path
 import argparse
 import json
 import sys
-import os
 import shutil
 import re
 import numpy as np
 import h5py
 from datetime import datetime
 
-ROOT = Path(os.environ.get("FATHI_BENCHMARK_ROOT", str(Path.home() / "sem3d_fathi_clean"))).expanduser().resolve()
+from scripts.fathi_benchmark.runtime_paths import repository_root, resolve_path
+
+ROOT = repository_root()
 
 _context_parser = argparse.ArgumentParser(add_help=False)
 _context_parser.add_argument("--context", required=True)
 _context_args, _remaining_argv = _context_parser.parse_known_args()
 sys.argv = [sys.argv[0]] + _remaining_argv
 
-CTX = Path(_context_args.context)
-if not CTX.is_absolute():
-    CTX = ROOT / CTX
+CTX = resolve_path(_context_args.context, base=ROOT)
 ctx = json.loads(CTX.read_text())
 
-residual_h5 = Path(ctx["work_root"]) / "residual_sources/454B_strict_residual_timeseries.h5"
-format_json = Path(ctx["work_root"]) / "residual_sources/455A_old_adjoint_source_format.json"
+work_root = resolve_path(ctx["work_root"], base=ROOT)
+residual_h5 = (
+    work_root
+    / "residual_sources"
+    / "454B_strict_residual_timeseries.h5"
+)
+format_json = (
+    work_root
+    / "residual_sources"
+    / "455A_old_adjoint_source_format.json"
+)
 
 if not residual_h5.exists():
     raise RuntimeError(f"Missing residual H5. Run 454B first: {residual_h5}")
@@ -35,10 +42,22 @@ old_roots = {
     "z": ROOT / "data/inversion_linear/iter_005/adjoint_z_mgcap_full_batches",
 }
 
-iter_root = Path(ctx.get("output_iter_root", ROOT / "data/inversion_linear/iter_008"))
-out_base = Path(ctx.get("output_adjoint_batches_dir", iter_root / "adjoint_full_grid_batches"))
+iter_root = resolve_path(
+    ctx.get(
+        "output_iter_root",
+        ROOT / "data/inversion_linear/iter_008",
+    ),
+    base=ROOT,
+)
+out_base = resolve_path(
+    ctx.get(
+        "output_adjoint_batches_dir",
+        iter_root / "adjoint_full_grid_batches",
+    ),
+    base=ROOT,
+)
 
-outdir = Path(ctx["work_root"]) / "residual_sources"
+outdir = work_root / "residual_sources"
 outdir.mkdir(parents=True, exist_ok=True)
 
 runtime_names = {
@@ -63,7 +82,10 @@ def ignore_func(dirpath, names):
     return ignored
 
 def copy_current_material(dst):
-    src_h5 = Path(ctx["input_accepted_dir"]) / "mat/h5"
+    src_h5 = resolve_path(
+        ctx["input_accepted_dir"],
+        base=ROOT,
+    ) / "mat/h5"
     dst_h5 = dst / "mat/h5"
     dst_h5.mkdir(parents=True, exist_ok=True)
 
@@ -184,8 +206,8 @@ def hardcoded_scan(dst):
             continue
         text = p.read_text(errors="ignore")
         for token in [
-            "/home/crellamaybe/sem3d_fathi_clean/data/inversion_linear/iter_005",
-            "/home/crellamaybe/sem3d_fathi_clean/data/inversion_linear/iter_006",
+            "data/inversion_linear/iter_005",
+            "data/inversion_linear/iter_006",
             "longterm_capteurs_material_grid",
         ]:
             if token in text:

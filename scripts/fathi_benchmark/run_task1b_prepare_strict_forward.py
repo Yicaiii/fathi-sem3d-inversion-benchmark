@@ -4,9 +4,10 @@ import argparse
 import json
 import subprocess
 import sys
-import os
 
-ROOT = Path(os.environ.get("FATHI_BENCHMARK_ROOT", str(Path.home() / "sem3d_fathi_clean"))).expanduser().resolve()
+from runtime_paths import repository_root
+
+ROOT = repository_root()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--context", required=True)
@@ -35,8 +36,9 @@ report_dir.mkdir(parents=True, exist_ok=True)
 out_txt = report_dir / f"{transition}_prepare_strict_forward_task.txt"
 out_json = report_dir / f"{transition}_prepare_strict_forward_task.json"
 
-script_450b = "scripts/fathi_benchmark/generic_from_legacy/450B_select_strict_forward_full_template_generic.py"
-script_450c = "scripts/fathi_benchmark/generic_from_legacy/450C_prepare_strict_full_forward_run_generic.py"
+module_450b = "scripts.fathi_benchmark.generic_from_legacy.450B_select_strict_forward_full_template_generic"
+module_450c = "scripts.fathi_benchmark.generic_from_legacy.450C_prepare_strict_full_forward_run_generic"
+module_forward_operator = "scripts.fathi_benchmark.enforce_forward_operator"
 
 def count_capteurs():
     if not traces_dir.exists():
@@ -106,16 +108,18 @@ if ok_before and not args.force:
 elif not args.execute:
     payload["result"] = "PASS_PLAN_ONLY"
     lines.append("Plan only. Would run:")
-    lines.append(f"  python3 {script_450b} --context {ctx_path.relative_to(ROOT)}")
-    lines.append(f"  python3 {script_450c} --context {ctx_path.relative_to(ROOT)}")
+    lines.append(f"  python3 -m {module_450b} --context {ctx_path.relative_to(ROOT)}")
+    lines.append(f"  python3 -m {module_450c} --context {ctx_path.relative_to(ROOT)}")
+    lines.append(f"  python3 -m {module_forward_operator} --context {ctx_path.relative_to(ROOT)}")
 
 else:
     script_runs = []
     all_child_ok = True
 
-    for script in [script_450b, script_450c]:
+    for script in [module_450b, module_450c, module_forward_operator]:
         cmd = [
             sys.executable,
+            "-m",
             script,
             "--context",
             str(ctx_path.relative_to(ROOT)),
