@@ -1,52 +1,136 @@
-# Fathi SEM3D Inversion Benchmark and PyMoniK Integration
+﻿# Fathi SEM3D Inversion Benchmark and PyMoniK Integration
 
 
 
 ---
 
-## Canonical workflow (current public interface)
+## Start here
 
-The authoritative public entry point for the current benchmark workflow is:
+This repository now exposes two different levels of execution. They are not two
+inversion algorithms.
+
+### A. From-scratch benchmark bootstrap
+
+Use the bootstrap entry point on a new machine or in a clean output directory:
 
 ```bash
-python -m scripts.fathi_benchmark.run_iteration --iter-k K --stage plan
+python -m scripts.bootstrap.bootstrap_fathi_benchmark \
+  --output-root /path/to/runtime/fathi_reduced_3x3_12p5
 ```
 
-The current engine is a **resumed iteration orchestrator**, not yet a fully standalone
-from-scratch inversion runner. It assumes that strict forward, residual and adjoint
-prerequisites for the transition already exist.
+The command is plan-only by default. It prints the full workflow without creating
+files or launching SEM3D.
 
-The canonical stage order is:
+A short real smoke bootstrap is:
+
+```bash
+export FATHI_BENCHMARK_ROOT=/path/to/fathi-sem3d-inversion-benchmark
+export SEM3D_MESHER=/path/to/SEM/build/MESH/mesher
+export SEM3D_EXE=/path/to/SEM/build/SEM3D/sem3d.exe
+
+cd "$FATHI_BENCHMARK_ROOT"
+source .venv/bin/activate
+
+python -m scripts.bootstrap.bootstrap_fathi_benchmark \
+  --output-root /tmp/fathi_reduced_3x3_12p5_smoke \
+  --smoke-seconds 0.012 \
+  --timeout-seconds 900 \
+  --execute
+```
+
+A full `0.1 s` bootstrap uses the same command without `--smoke-seconds`:
+
+```bash
+python -m scripts.bootstrap.bootstrap_fathi_benchmark \
+  --output-root /path/to/runtime/fathi_reduced_3x3_12p5 \
+  --timeout-seconds 900 \
+  --execute
+```
+
+The bootstrap builds and audits both benchmark workspaces:
 
 ```text
-Task 0 prerequisites
-    -> Task 3 gradient and Mtilde solve
-    -> Task 4 candidate generation and workspace preparation
-    -> Task 5 candidate forward, misfit and acceptance
-    -> iteration status report
+true_layered
+  -> generate SEM3D inputs
+  -> run mesher
+  -> validate 12 mesh partitions
+  -> run solver
+  -> validate observed traces
+
+initial_homogeneous
+  -> generate SEM3D inputs
+  -> run mesher
+  -> validate 12 mesh partitions
+  -> run solver
+  -> validate predicted traces
 ```
 
-A safe dry-run plan is:
+The machine-readable benchmark profile is:
+
+```text
+configs/fathi_reduced_3x3_12p5.json
+```
+
+It defines the reduced Fathi-style operator used here: 9 vertical point sources,
+225 physical receivers, 12 mesh partitions, a layered synthetic truth, and a
+homogeneous 80 MPa initial model.
+
+### B. Iteration workflow interfaces
+
+The repository currently contains two iteration orchestrators with different scopes.
+
+#### Resumed public workflow
 
 ```bash
 python -m scripts.fathi_benchmark.run_iteration \
-  --iter-k 0 \
-  --stage plan \
-  --candidate line_search_neg_mtilde_1p00MPa \
-  --config benchmark_fathi_strict/config/benchmark_config.json
+  --iter-k K \
+  --stage plan
 ```
 
-Actual execution requires the explicit `--execute` flag. Candidate acceptance controls
-are also explicit:
+`run_iteration.py` is the canonical resumed-workflow interface. It assumes that the
+strict forward, residual, and adjoint prerequisites already exist. Its `all` stage
+covers:
 
 ```text
---allow-non-descent
---overwrite-existing
+prerequisites
+  -> gradient and Mtilde solve
+  -> candidate generation
+  -> candidate forward, misfit, and acceptance
+  -> status
 ```
 
-All canonical child commands use package invocation (`python -m ...`) and receive the
-same resolved `--config` path. Runtime roots may be supplied through the configuration
-file and `FATHI_BENCHMARK_ROOT`; source files are not located through runtime-data paths.
+#### Full local transition workflow
+
+```bash
+python scripts/fathi_benchmark/run_iteration_full_context.py \
+  --iter-k K \
+  --stage all_full \
+  --candidate line_search_neg_mtilde_1p00MPa \
+  --execute-heavy \
+  --allow-mutate
+```
+
+`run_iteration_full_context.py` is the current complete local transition runner. It
+covers:
+
+```text
+accepted state_k
+  -> strict forward
+  -> residual
+  -> 30 adjoint batches
+  -> gradient and Mtilde solve
+  -> candidates
+  -> candidate forward and acceptance
+  -> accepted state_{k+1}
+```
+
+The long-term public API is intended to remain `run_iteration.py`, with the
+full-context runner retained as an internal implementation layer. That interface
+consolidation is not yet complete.
+
+All runtime roots may be supplied through configuration and
+`FATHI_BENCHMARK_ROOT`. Large generated workspaces and traces are runtime data and
+must not be committed to Git.
 
 ## 1. Project Overview
 
@@ -62,18 +146,18 @@ state_k
 
 Each iteration takes the accepted material model from the previous iteration, runs a forward simulation, compares synthetic receiver traces with observed receiver traces, prepares adjoint sources, runs adjoint simulations, computes the gradient-like control update through an Mtilde solve, generates candidate material models, evaluates candidate misfit, and accepts the candidate only if the receiver misfit decreases.
 
-The current validated transition is:
+Iteration numbering is generic: every transition is expressed as
+`iter_k -> iter_{k+1}`.
+
+The repository also preserves one historical full-transition validation:
 
 ```text
-iter_008 -> iter_009
+iter_008 -> iter_009 = PASS_COMPLETE
 ```
 
-The accepted output is:
-
-```text
-results/fathi_loop_v2/states_corrected/iter_009_state_v2_corrected.npz
-data/inversion_linear/iter_009/accepted
-```
+That transition is evidence for the tested local workflow, not a hard-coded runtime
+requirement. New runs should use `--iter-k K` and the generic `iter_{k:03d}` path
+convention.
 
 ---
 
@@ -120,9 +204,41 @@ Mat_0_Density.h5
 
 ---
 
-## 3. Validated Result
+## 3. Validated Results
 
-The local full iteration test has successfully completed:
+### 3.1 Fresh bootstrap validation
+
+The profile `fathi_reduced_3x3_12p5` has been validated from machine-readable
+configuration through real SEM3D execution for both models:
+
+```text
+true_layered
+  generator = PASS
+  mesher = PASS
+  mesh partitions = 12
+  solver smoke run = PASS
+  traces written = PASS
+
+initial_homogeneous
+  generator = PASS
+  mesher = PASS
+  mesh partitions = 12
+  solver smoke run = PASS
+  traces written = PASS
+```
+
+The complete bootstrap is controlled by:
+
+```text
+scripts/bootstrap/bootstrap_fathi_benchmark.py
+```
+
+Each workspace also contains machine-readable manifests under `logs/` for mesher
+and solver execution. The output root contains the overall bootstrap manifest.
+
+### 3.2 Historical inversion-transition validation
+
+The local full iteration test previously completed:
 
 ```text
 transition = iter_008_to_iter_009
@@ -145,7 +261,7 @@ Final audit:
 RESULT = PASS_COMPLETE
 ```
 
-Important accepted outputs:
+Historical accepted outputs:
 
 ```text
 results/fathi_loop_v2/states_corrected/iter_009_state_v2_corrected.npz
@@ -154,16 +270,24 @@ data/inversion_linear/iter_009/accepted/mat/h5/Mat_0_Mu.h5
 data/inversion_linear/iter_009/accepted/mat/h5/Mat_0_Density.h5
 ```
 
----
-
 ## 4. Repository Layout
 
-Recommended repository structure:
+Key repository components:
 
 ```text
 fathi-sem3d-inversion-benchmark/
+├── configs/
+│   └── fathi_reduced_3x3_12p5.json
+│
 ├── scripts/
+│   ├── bootstrap/
+│   │   ├── generate_sem3d_workspace.py
+│   │   ├── run_sem3d_mesher.py
+│   │   ├── run_sem3d_solver.py
+│   │   └── bootstrap_fathi_benchmark.py
+│   │
 │   ├── fathi_benchmark/
+│   │   ├── run_iteration.py
 │   │   ├── create_iteration_context_generic.py
 │   │   ├── run_iteration_full_context.py
 │   │   ├── run_task1b_prepare_strict_forward.py
@@ -176,138 +300,137 @@ fathi-sem3d-inversion-benchmark/
 │   │   ├── run_task5_candidate.py
 │   │   └── audit_transition_completion.py
 │   │
-│   ├── fathi_benchmark/generic_from_legacy/
-│   │   ├── 454A_compute_strict_forward_residual_manifest_generic.py
-│   │   ├── 454B_build_strict_residual_timeseries_h5_generic.py
-│   │   ├── 455A_extract_old_adjoint_source_format_generic.py
-│   │   ├── 455B_prepare_strict_adjoint_batches_from_residual_generic.py
-│   │   ├── 455C_audit_strict_adjoint_batches_generic.py
-│   │   └── 450B_select_strict_forward_full_template_generic.py
-│   │
 │   ├── iteration_engine/
-│   │   ├── build_rhs_manifests_generic_v2.py
 │   │   ├── assemble_rhs_total_generic.py
 │   │   ├── solve_mtilde_generic.py
-│   │   ├── audit_candidate_inputs.py
 │   │   ├── generate_candidates_from_mtilde_gradient.py
-│   │   ├── audit_candidates_generic.py
-│   │   ├── prepare_candidate_forward_workspaces.py
 │   │   ├── run_candidate_forward.py
 │   │   ├── compute_candidate_misfit_v2.py
 │   │   └── accept_candidate_if_descent_v2.py
 │   │
-│   └── longterm/
-│       └── 424B_compute_rhs_component_from_traces.py
+│   └── regularization/
+│       ├── 01_audit_q1_material_mesh.py
+│       ├── 02_compute_tv_q1_full_grid.py
+│       ├── 03_test_tv_q1.py
+│       ├── 04_restrict_tv_rhs_to_active.py
+│       ├── 05_assemble_data_tv_rhs.py
+│       ├── 06_solve_mtilde_data_tv_rhs.py
+│       ├── 07_diagnose_tv_weight.py
+│       └── 08_generate_tv_candidates_from_mtilde_gradient.py
 │
-├── results/
-│   └── fathi_loop_v2/
-│       ├── states_corrected/
-│       ├── iter_007_to_iter_008/
-│       ├── iter_008_to_iter_009/
-│       └── iter_009_to_iter_010/
+├── tests/
+│   └── bootstrap/
+│       ├── test_generate_sem3d_workspace.py
+│       ├── test_run_sem3d_mesher.py
+│       ├── test_run_sem3d_solver.py
+│       └── test_bootstrap_fathi_benchmark.py
 │
-├── data/
-│   ├── 60_true_layered_h5_T045/
-│   │   └── traces/
-│   └── inversion_linear/
-│       ├── iter_008/
-│       └── iter_009/
-│
-└── benchmark_fathi_strict/
-    └── reports/
+├── benchmark_fathi_strict/
+├── benchmark_fathi_tv/
+├── docs/
+├── reports/
+└── README.md
 ```
 
-Important note:
+Generated bootstrap workspaces have this runtime structure:
 
 ```text
-Large runtime data should usually NOT be committed to GitHub.
+<output-root>/
+├── bootstrap_manifest.json
+├── true_layered/
+│   ├── input.spec
+│   ├── material.input
+│   ├── mat/h5/
+│   ├── sem/mesh4spec.0000.h5 ... mesh4spec.0011.h5
+│   ├── traces/
+│   └── logs/
+└── initial_homogeneous/
+    ├── input.spec
+    ├── material.input
+    ├── mat/h5/
+    ├── sem/mesh4spec.0000.h5 ... mesh4spec.0011.h5
+    ├── traces/
+    └── logs/
 ```
 
-Do not commit huge folders such as:
-
-```text
-data/inversion_linear/*/adjoint_full_grid_batches/*/*/traces
-data/inversion_linear/*/forward_dudx_mgcap_full_batches/*/traces
-data/inversion_linear/*/candidate_forward_workspaces/*/traces
-results/fathi_loop_v2/*/residual_sources/*.h5
-```
-
-Commit scripts, configs, small summaries, reports, and README files instead.
-
----
+Large runtime data should usually not be committed to GitHub. Commit scripts,
+configuration, tests, small manifests, summaries, and documentation instead.
 
 ## 5. Main Inputs and Outputs
 
-### 5.1 Inputs
+### 5.1 Bootstrap inputs
 
-#### Accepted parent state
+#### Benchmark profile
+
+```text
+configs/fathi_reduced_3x3_12p5.json
+```
+
+The profile defines geometry, material grids, true and initial material models,
+source and receiver operators, STF parameters, partition count, and expected output
+semantics.
+
+#### External executables
+
+```bash
+export SEM3D_MESHER=/path/to/SEM/build/MESH/mesher
+export SEM3D_EXE=/path/to/SEM/build/SEM3D/sem3d.exe
+```
+
+The runtime also requires `mpirun`, Python, NumPy, and h5py.
+
+A minimal preflight is:
+
+```bash
+python --version
+python -c "import numpy, h5py"
+command -v mpirun
+test -x "$SEM3D_MESHER"
+test -x "$SEM3D_EXE"
+```
+
+### 5.2 Bootstrap outputs
+
+For an output root `<bootstrap-root>`:
+
+```text
+<bootstrap-root>/true_layered
+<bootstrap-root>/initial_homogeneous
+<bootstrap-root>/bootstrap_manifest.json
+```
+
+The true-model traces are synthetic observed data. The initial-model traces are the
+prediction from the homogeneous starting model. The true material field is used only
+to generate and validate synthetic observations; it is not passed directly into the
+inversion update.
+
+### 5.3 Iteration inputs
 
 For transition `iter_k -> iter_{k+1}`:
 
 ```text
 results/fathi_loop_v2/states_corrected/iter_{k:03d}_state_v2_corrected.npz
 data/inversion_linear/iter_{k:03d}/accepted
+results/fathi_loop_v2/iter_{k:03d}_to_iter_{k+1:03d}/
+  iter_{k:03d}_to_iter_{k+1:03d}_iteration_context.json
 ```
 
-For the validated transition:
+Observed receiver traces must be referenced through configuration or context. A
+fresh bootstrap can provide the true-model trace directory.
+
+### 5.4 Iteration outputs
 
 ```text
-results/fathi_loop_v2/states_corrected/iter_008_state_v2_corrected.npz
-data/inversion_linear/iter_008/accepted
+data/inversion_linear/iter_{k+1:03d}/forward_dudx_mgcap_full_batches/
+results/fathi_loop_v2/iter_{k:03d}_to_iter_{k+1:03d}/residual_sources/
+data/inversion_linear/iter_{k+1:03d}/adjoint_full_grid_batches/
+results/fathi_loop_v2/iter_{k:03d}_to_iter_{k+1:03d}/component_rhs/
+results/fathi_loop_v2/iter_{k:03d}_to_iter_{k+1:03d}/mtilde_solve/
+results/fathi_loop_v2/iter_{k:03d}_to_iter_{k+1:03d}/candidates/
+data/inversion_linear/iter_{k+1:03d}/candidate_forward_workspaces/
 ```
 
-#### Observed receiver traces
-
-```text
-data/60_true_layered_h5_T045/traces
-```
-
-These traces are treated as the observed data. The true model is used only for generating observed traces and validation, not for directly updating the inversion parameters.
-
-#### SEM3D executable
-
-Set `SEM3D_EXE` to the local SEM3D binary, for example:
-
-```bash
-export SEM3D_EXE=/path/to/SEM3D/sem3d.exe
-```
-
-#### Iteration context
-
-For `iter_008 -> iter_009`:
-
-```text
-results/fathi_loop_v2/iter_008_to_iter_009/iter_008_to_iter_009_iteration_context.json
-```
-
-The context file stores the paths and transition metadata needed by every task.
-
----
-
-### 5.2 Outputs
-
-#### Strict forward traces
-
-```text
-data/inversion_linear/iter_009/forward_dudx_mgcap_full_batches/strict_full_forward_000/traces
-```
-
-#### Residual time series
-
-```text
-results/fathi_loop_v2/iter_008_to_iter_009/residual_sources/454B_strict_residual_timeseries.h5
-results/fathi_loop_v2/iter_008_to_iter_009/residual_sources/454B_strict_residual_timeseries_summary.txt
-```
-
-#### Adjoint batches
-
-```text
-data/inversion_linear/iter_009/adjoint_full_grid_batches/x/batch_000
-...
-data/inversion_linear/iter_009/adjoint_full_grid_batches/z/batch_009
-```
-
-There are 30 adjoint batches in total:
+There are 30 adjoint batches:
 
 ```text
 x: batch_000 ... batch_009
@@ -315,247 +438,130 @@ y: batch_000 ... batch_009
 z: batch_000 ... batch_009
 ```
 
-#### RHS and Mtilde solve
+Accepted outputs follow the generic convention:
 
 ```text
-results/fathi_loop_v2/iter_008_to_iter_009/component_rhs
-results/fathi_loop_v2/iter_008_to_iter_009/mtilde_solve
+results/fathi_loop_v2/states_corrected/iter_{k+1:03d}_state_v2_corrected.npz
+data/inversion_linear/iter_{k+1:03d}/accepted
 ```
-
-Important Mtilde outputs:
-
-```text
-g_lambda_mtilde_q1_interior_solve_rhs_total.npy
-g_mu_mtilde_q1_interior_solve_rhs_total.npy
-g_mtilde_q1_interior_solve_rhs_total_coords.npy
-Mtilde_q1_consistent_interior_38440_indices.npy
-```
-
-#### Candidates
-
-```text
-results/fathi_loop_v2/iter_008_to_iter_009/candidates
-data/inversion_linear/iter_009/candidate_forward_workspaces
-```
-
-Validated candidate:
-
-```text
-line_search_neg_mtilde_1p00MPa
-```
-
-Other generated candidates:
-
-```text
-line_search_neg_mtilde_0p10MPa
-line_search_neg_mtilde_0p25MPa
-line_search_neg_mtilde_0p50MPa
-line_search_neg_mtilde_1p00MPa
-```
-
-#### Accepted output
-
-```text
-results/fathi_loop_v2/states_corrected/iter_009_state_v2_corrected.npz
-data/inversion_linear/iter_009/accepted
-```
-
----
 
 ## 6. One Full Iteration Workflow
 
-The full local workflow is:
+The current complete local transition is context-driven:
 
 ```text
-create context
+accepted state_k
+  -> create/read iteration context
   -> prepare strict forward
   -> run strict forward
-  -> generate residual
-  -> prepare adjoint batches
-  -> run 30 adjoint batches
-  -> compute gradient / Mtilde solve
-  -> generate candidates
-  -> run candidate forward + misfit + accept
+  -> generate receiver residual
+  -> prepare 30 adjoint workspaces
+  -> run 30 adjoint simulations
+  -> assemble RHS and solve Mtilde
+  -> generate candidate models
+  -> run candidate forward and compute misfit
+  -> accept only if the configured descent rule passes
   -> audit transition
 ```
 
-### Step 0. Activate environment
+### Step 0. Activate the environment
 
 ```bash
 export FATHI_BENCHMARK_ROOT=/path/to/fathi-sem3d-inversion-benchmark
+export SEM3D_EXE=/path/to/SEM/build/SEM3D/sem3d.exe
+
 cd "$FATHI_BENCHMARK_ROOT"
 source .venv/bin/activate
 ```
 
-### Step 1. Create context
-
-For `iter_008 -> iter_009`:
+### Step 1. Create a generic context
 
 ```bash
-python3 scripts/fathi_benchmark/create_iteration_context_generic.py \
-  --iter-k 8 \
+K=9
+
+python scripts/fathi_benchmark/create_iteration_context_generic.py \
+  --iter-k "$K" \
   --write
 ```
 
-Set context variable:
-
-```bash
-CTX8=results/fathi_loop_v2/iter_008_to_iter_009/iter_008_to_iter_009_iteration_context.json
-```
-
-### Step 2. Prepare strict forward workspace
-
-```bash
-time python3 scripts/fathi_benchmark/run_iteration_full_context.py \
-  --context "$CTX8" \
-  --stage prepare_strict_forward
-```
-
-Output:
+The context path follows:
 
 ```text
-data/inversion_linear/iter_009/forward_dudx_mgcap_full_batches/strict_full_forward_000
+results/fathi_loop_v2/
+  iter_{k:03d}_to_iter_{k+1:03d}/
+  iter_{k:03d}_to_iter_{k+1:03d}_iteration_context.json
 ```
 
-### Step 3. Run strict forward SEM3D
+### Step 2. Plan the complete transition
 
 ```bash
-time python3 scripts/fathi_benchmark/run_iteration_full_context.py \
-  --context "$CTX8" \
-  --stage strict_forward \
-  --execute-heavy
+python scripts/fathi_benchmark/run_iteration_full_context.py \
+  --iter-k "$K" \
+  --stage preflight
 ```
 
-Expected output:
-
-```text
-data/inversion_linear/iter_009/forward_dudx_mgcap_full_batches/strict_full_forward_000/traces
-```
-
-### Step 4. Generate residual
+### Step 3. Execute the complete transition
 
 ```bash
-time python3 scripts/fathi_benchmark/run_iteration_full_context.py \
-  --context "$CTX8" \
-  --stage residual_generation
-```
-
-Expected output:
-
-```text
-results/fathi_loop_v2/iter_008_to_iter_009/residual_sources/454B_strict_residual_timeseries.h5
-```
-
-### Step 5. Prepare adjoint batches
-
-```bash
-time python3 scripts/fathi_benchmark/run_iteration_full_context.py \
-  --context "$CTX8" \
-  --stage prepare_adjoint
-```
-
-Expected output:
-
-```text
-30 adjoint workspaces
-```
-
-### Step 6. Run all adjoint batches
-
-```bash
-time python3 scripts/fathi_benchmark/run_iteration_full_context.py \
-  --context "$CTX8" \
-  --stage adjoint_all \
-  --execute-heavy
-```
-
-This runs:
-
-```text
-x/batch_000 ... x/batch_009
-y/batch_000 ... y/batch_009
-z/batch_000 ... z/batch_009
-```
-
-Expected check:
-
-```text
-ready_batches = 30 / 30
-missing_batches = 0 / 30
-```
-
-### Step 7. Compute gradient and Mtilde update
-
-```bash
-time python3 scripts/fathi_benchmark/run_iteration_full_context.py \
-  --context "$CTX8" \
-  --stage gradient
-```
-
-This step computes RHS terms and solves Mtilde.
-
-Expected output:
-
-```text
-results/fathi_loop_v2/iter_008_to_iter_009/mtilde_solve
-```
-
-### Step 8. Generate candidates
-
-```bash
-time python3 scripts/fathi_benchmark/run_iteration_full_context.py \
-  --context "$CTX8" \
-  --stage candidates
-```
-
-Expected output:
-
-```text
-results/fathi_loop_v2/iter_008_to_iter_009/candidates
-data/inversion_linear/iter_009/candidate_forward_workspaces
-```
-
-### Step 9. Run Task5 candidate forward / misfit / accept
-
-```bash
-time python3 scripts/fathi_benchmark/run_iteration_full_context.py \
-  --context "$CTX8" \
-  --stage task5 \
+python scripts/fathi_benchmark/run_iteration_full_context.py \
+  --iter-k "$K" \
+  --stage all_full \
   --candidate line_search_neg_mtilde_1p00MPa \
   --execute-heavy \
   --allow-mutate
 ```
 
-This step does:
+This is the current full local runner. Heavy SEM3D stages are not launched unless
+`--execute-heavy` is supplied. The accepted state is not changed unless
+`--allow-mutate` is supplied.
 
-```text
-Task 5A: candidate forward SEM3D
-Task 5B: candidate misfit
-Task 5C: accept if descent
-```
+### Resuming after prerequisites already exist
 
-Expected accepted output:
-
-```text
-results/fathi_loop_v2/states_corrected/iter_009_state_v2_corrected.npz
-data/inversion_linear/iter_009/accepted
-```
-
-### Step 10. Audit transition
+Use the resumed interface only when strict forward, residual, and adjoint outputs
+are already complete:
 
 ```bash
-python3 scripts/fathi_benchmark/audit_transition_completion.py --iter-k 8
-
-cat benchmark_fathi_strict/reports/audit/iter_008_to_iter_009_completion_audit.txt
+python -m scripts.fathi_benchmark.run_iteration \
+  --iter-k "$K" \
+  --stage all \
+  --candidate line_search_neg_mtilde_1p00MPa \
+  --execute
 ```
 
-Expected result:
+### Audit
 
-```text
-RESULT = PASS_COMPLETE
+```bash
+python scripts/fathi_benchmark/audit_transition_completion.py \
+  --iter-k "$K"
 ```
+
+The historical `iter_008 -> iter_009` commands and reports remain useful regression
+evidence, but they are not the only supported iteration numbers.
 
 ---
+
+## 7. Tests
+
+Run the complete bootstrap regression suite with:
+
+```bash
+python -m unittest discover \
+  -s tests/bootstrap \
+  -p 'test_*.py' \
+  -v
+```
+
+The suite covers:
+
+```text
+workspace generation
+mesher execution and 12-partition audit
+solver execution, smoke overrides, trace checks, and input restoration
+complete two-model bootstrap planning and orchestration
+```
+
+A real SEM3D smoke bootstrap is still required to validate the local SEM3D build,
+MPI runtime, filesystem, and external binary compatibility.
 
 ## 8. Does Each Iteration Update Mu and Other Parameters?
 
@@ -779,42 +785,66 @@ audit_transition_completion
 
 ## 10. Safety Rules
 
-### Do not run mutation stages without explicit confirmation
+### Bootstrap is plan-only unless execution is explicit
+
+```bash
+python -m scripts.bootstrap.bootstrap_fathi_benchmark \
+  --output-root /path/to/output
+```
+
+The command above does not create files. Add `--execute` only after reviewing the
+plan. Use `--overwrite` only for a verified disposable or intentionally replaceable
+output root.
+
+### Heavy iteration stages require explicit execution
+
+The full transition runner requires:
+
+```text
+--execute-heavy
+```
+
+before launching SEM3D stages.
+
+### Accepted-state mutation requires explicit permission
 
 The acceptance stage changes the trusted next state:
 
 ```text
-results/fathi_loop_v2/states_corrected/iter_{k+1}_state_v2_corrected.npz
-data/inversion_linear/iter_{k+1}/accepted
+results/fathi_loop_v2/states_corrected/iter_{k+1:03d}_state_v2_corrected.npz
+data/inversion_linear/iter_{k+1:03d}/accepted
 ```
 
-Therefore, local execution requires:
+Local execution therefore requires:
 
-```bash
+```text
 --allow-mutate
 ```
 
-### Do not run SEM3D accidentally
+### Do not treat output presence as proof of success
 
-Heavy SEM3D execution requires:
+Audit solver status using all of the following:
 
-```bash
---execute-heavy
+```text
+process return code = 0
+timed_out = false
+fin_sem = 1
+expected non-empty traces exist
+solver manifest reports audit_passed = true
 ```
 
-### Do not delete current accepted results
+A `fin_sem` file alone is not sufficient because failed starts may still create a
+small completion file.
 
-Do not delete:
+### Preserve historical validated results
+
+Do not delete the historical accepted state and reports used as regression evidence:
 
 ```text
 data/inversion_linear/iter_009/accepted
 results/fathi_loop_v2/states_corrected/iter_009_state_v2_corrected.npz
 results/fathi_loop_v2/iter_008_to_iter_009
 ```
-
-These are the proof that the benchmark completed successfully.
-
----
 
 ## 11. Suggested .gitignore
 
@@ -865,86 +895,81 @@ and explicitly unignore them.
 
 ## 12. Minimal Reproduction Command List
 
-For a new transition `iter_k -> iter_{k+1}`:
+### Fresh bootstrap smoke run
 
 ```bash
 export FATHI_BENCHMARK_ROOT=/path/to/fathi-sem3d-inversion-benchmark
+export SEM3D_MESHER=/path/to/SEM/build/MESH/mesher
+export SEM3D_EXE=/path/to/SEM/build/SEM3D/sem3d.exe
+
 cd "$FATHI_BENCHMARK_ROOT"
 source .venv/bin/activate
 
-python3 scripts/fathi_benchmark/create_iteration_context_generic.py \
-  --iter-k 9 \
+python -m scripts.bootstrap.bootstrap_fathi_benchmark \
+  --output-root /tmp/fathi_reduced_3x3_12p5_smoke \
+  --smoke-seconds 0.012 \
+  --timeout-seconds 900 \
+  --execute
+```
+
+### Generic full transition
+
+```bash
+K=9
+
+python scripts/fathi_benchmark/create_iteration_context_generic.py \
+  --iter-k "$K" \
   --write
 
-CTX=results/fathi_loop_v2/iter_009_to_iter_010/iter_009_to_iter_010_iteration_context.json
-
-python3 scripts/fathi_benchmark/run_iteration_full_context.py \
-  --context "$CTX" \
-  --stage prepare_strict_forward
-
-python3 scripts/fathi_benchmark/run_iteration_full_context.py \
-  --context "$CTX" \
-  --stage strict_forward \
-  --execute-heavy
-
-python3 scripts/fathi_benchmark/run_iteration_full_context.py \
-  --context "$CTX" \
-  --stage residual_generation
-
-python3 scripts/fathi_benchmark/run_iteration_full_context.py \
-  --context "$CTX" \
-  --stage prepare_adjoint
-
-python3 scripts/fathi_benchmark/run_iteration_full_context.py \
-  --context "$CTX" \
-  --stage adjoint_all \
-  --execute-heavy
-
-python3 scripts/fathi_benchmark/run_iteration_full_context.py \
-  --context "$CTX" \
-  --stage gradient
-
-python3 scripts/fathi_benchmark/run_iteration_full_context.py \
-  --context "$CTX" \
-  --stage candidates
-
-python3 scripts/fathi_benchmark/run_iteration_full_context.py \
-  --context "$CTX" \
-  --stage task5 \
+python scripts/fathi_benchmark/run_iteration_full_context.py \
+  --iter-k "$K" \
+  --stage all_full \
   --candidate line_search_neg_mtilde_1p00MPa \
   --execute-heavy \
   --allow-mutate
 
-python3 scripts/fathi_benchmark/audit_transition_completion.py \
-  --iter-k 9
+python scripts/fathi_benchmark/audit_transition_completion.py \
+  --iter-k "$K"
 ```
 
----
+### Resumed transition after prerequisites exist
+
+```bash
+python -m scripts.fathi_benchmark.run_iteration \
+  --iter-k "$K" \
+  --stage all \
+  --candidate line_search_neg_mtilde_1p00MPa \
+  --execute
+```
 
 ## 13. Current Status
 
 ```text
-Local benchmark transition tested:
-  iter_008 -> iter_009
+Fresh reproducibility:
+  machine-readable profile = implemented
+  standalone workspace generator = implemented and tested
+  SEM3D mesher runner = implemented and tested
+  12-partition audit = implemented and tested
+  SEM3D solver runner = implemented and tested
+  true_layered real smoke run = PASS
+  initial_homogeneous real smoke run = PASS
+  two-model bootstrap entry = implemented and tested
 
-Status:
-  PASS_COMPLETE
+Iteration orchestration:
+  run_iteration.py = resumed public workflow
+  run_iteration_full_context.py = current full local transition workflow
+  single unified iteration interface = not yet completed
 
-Candidate:
-  line_search_neg_mtilde_1p00MPa
+Historical inversion validation:
+  iter_008 -> iter_009 = PASS_COMPLETE
+  accepted candidate = line_search_neg_mtilde_1p00MPa
 
-Result:
-  candidate accepted
-  misfit decreased
-  iter_009 accepted state generated
-
-Next engineering goal:
-  connect the validated context-driven task graph to PyMoniK / ArmoniK
+ArmoniK:
+  task graph and payload design = planned
+  production integration and performance benchmark = not yet completed
 ```
 
----
-
-## Canonical Fathi 80 MPa initialization
+## 14. Canonical Fathi 80 MPa Initialization
 
 The strict Fathi validation starts from a homogeneous model with
 lambda = mu = 80 MPa, Kappa = 133.333333 MPa and density = 2000
@@ -966,3 +991,4 @@ See:
 
 Large SEM3D traces, snapshots and inversion workspaces are local
 runtime data and are not stored in Git.
+
