@@ -76,14 +76,29 @@ raise SystemExit({return_code})
         path.chmod(0o755)
         return path
 
+    def create_complete_outputs(self, directory: Path, partition_count: int = 12) -> None:
+        directory.mkdir(parents=True, exist_ok=True)
+        for index in range(partition_count):
+            (directory / f"mesh4spec.{index:04d}.h5").write_bytes(b"H5")
+        for name in (
+            "mesh4spec.elems.xmf",
+            "mesh4spec.faces.xmf",
+            "mesh4spec.edges.xmf",
+            "mesh4spec.mirror.xmf",
+            "mesh4spec.comms.faces.xmf",
+            "mesh4spec.comms.edges.xmf",
+        ):
+            (directory / name).write_text("<Xdmf/>\n", encoding="utf-8")
+        (directory / "domains.txt").write_text("domains\n", encoding="utf-8")
+
     def test_plan_only_does_not_create_outputs(self) -> None:
         result = self.run_command("--mesher", str(self.root / "not-needed"))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("RESULT = PASS_SEM3D_MESHER_PLAN", result.stdout)
-        self.assertFalse((self.workspace / "domains.txt").exists())
+        self.assertFalse((self.workspace / "sem").exists())
         self.assertEqual(list(self.workspace.glob("mesh4spec*.h5")), [])
 
-    def test_execute_creates_and_audits_twelve_partitions(self) -> None:
+    def test_execute_creates_organized_and_audited_twelve_partitions(self) -> None:
         mesher = self.fake_mesher()
         result = self.run_command(
             "--mesher",
@@ -97,14 +112,20 @@ raise SystemExit({return_code})
             "RESULT = PASS_SEM3D_MESHER_EXECUTION_AND_AUDIT",
             result.stdout,
         )
-        self.assertEqual(len(list(self.workspace.glob("mesh4spec.*.h5"))), 12)
+        self.assertEqual(len(list((self.workspace / "sem").glob("mesh4spec.*.h5"))), 12)
+        self.assertEqual(list(self.workspace.glob("mesh4spec*.h5")), [])
+        self.assertTrue((self.workspace / "sem" / "domains.txt").is_file())
+
         manifest = json.loads(
             (self.workspace / "logs" / "mesher_manifest.json").read_text(
                 encoding="utf-8"
             )
         )
+        self.assertEqual(manifest["schema_version"], 2)
+        self.assertEqual(manifest["solver_mesh_directory"], str(self.workspace / "sem"))
         self.assertTrue(manifest["audit"]["passed"])
         self.assertEqual(manifest["audit"]["partition_count_actual"], 12)
+        self.assertGreater(len(manifest["relocated_outputs"]), 12)
 
     def test_incomplete_partition_set_fails_audit(self) -> None:
         mesher = self.fake_mesher(partition_count=11)
@@ -118,7 +139,9 @@ raise SystemExit({return_code})
         self.assertIn("mesh4spec.0011.h5", result.stdout)
 
     def test_existing_outputs_require_overwrite(self) -> None:
-        stale = self.workspace / "mesh4spec.0000.h5"
+        sem = self.workspace / "sem"
+        sem.mkdir()
+        stale = sem / "mesh4spec.0000.h5"
         stale.write_bytes(b"stale")
         mesher = self.fake_mesher()
 
@@ -145,18 +168,18 @@ raise SystemExit({return_code})
         self.assertEqual(result.returncode, 2)
         self.assertIn("Required mesher input not found", result.stderr)
 
-    def test_audit_only_accepts_complete_outputs(self) -> None:
-        mesher = self.fake_mesher()
-        executed = self.run_command(
-            "--mesher",
-            str(mesher),
-            "--execute",
-        )
-        self.assertEqual(executed.returncode, 0, executed.stdout + executed.stderr)
-
+    def test_audit_only_accepts_complete_organized_outputs(self) -> None:
+        self.create_complete_outputs(self.workspace / "sem")
         audited = self.run_command("--audit-only")
         self.assertEqual(audited.returncode, 0, audited.stdout + audited.stderr)
         self.assertIn("RESULT = PASS_SEM3D_MESHER_OUTPUT_AUDIT", audited.stdout)
+
+    def test_audit_rejects_complete_outputs_left_in_workspace_root(self) -> None:
+        self.create_complete_outputs(self.workspace)
+        audited = self.run_command("--audit-only")
+        self.assertEqual(audited.returncode, 1, audited.stdout + audited.stderr)
+        self.assertIn("RESULT = FAIL_SEM3D_MESHER_OUTPUT_AUDIT", audited.stdout)
+        self.assertIn("stray_root_outputs", audited.stdout)
 
 
 if __name__ == "__main__":

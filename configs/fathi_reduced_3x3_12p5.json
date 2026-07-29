@@ -233,7 +233,8 @@
         25,
         26
       ]
-    }
+    },
+    "output_directory": "sem"
   },
   "forward_operator": {
     "source_count": 9,

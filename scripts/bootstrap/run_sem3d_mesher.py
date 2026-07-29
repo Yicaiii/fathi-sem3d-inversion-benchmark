@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Run and validate the SEM3D mesher for a generated benchmark workspace.
+"""Run, organize, and validate the SEM3D mesher for a benchmark workspace.
 
 The command is plan-only unless ``--execute`` is supplied. The mesher reads
 ``mesh.input`` from standard input and reads ``mat.dat`` and ``mater.in`` from
-the workspace working directory.
+the workspace working directory. SEM3D's mesher writes its files initially in
+the workspace root; this runner then moves the complete mesh product into the
+configured solver mesh directory (``sem/`` for this benchmark).
 """
 
 from __future__ import annotations
@@ -65,30 +67,86 @@ def default_mesher_path() -> Path:
     return (Path.home() / "SEM" / "build" / "MESH" / "mesher").resolve()
 
 
+def resolve_mesh_output_directory(workspace: Path, configured: str) -> Path:
+    relative = Path(configured)
+    require(not relative.is_absolute(), "sem3d_mesh.output_directory must be relative")
+    require(".." not in relative.parts, "sem3d_mesh.output_directory may not contain '..'")
+    require(relative.parts, "sem3d_mesh.output_directory may not be empty")
+    return workspace / relative
+
+
 def expected_partition_paths(
-    workspace: Path,
+    output_directory: Path,
     stem: str,
     partition_count: int,
 ) -> list[Path]:
-    return [workspace / f"{stem}.{index:04d}.h5" for index in range(partition_count)]
+    return [
+        output_directory / f"{stem}.{index:04d}.h5"
+        for index in range(partition_count)
+    ]
 
 
-def existing_mesher_outputs(workspace: Path, stem: str) -> list[Path]:
+def controlled_outputs(directory: Path, stem: str) -> list[Path]:
     candidates: set[Path] = set()
-    candidates.update(workspace.glob(f"{stem}*.h5"))
-    candidates.update(workspace.glob(f"{stem}*.xmf"))
-    candidates.add(workspace / "domains.txt")
+    candidates.update(directory.glob(f"{stem}*.h5"))
+    candidates.update(directory.glob(f"{stem}*.xmf"))
+    candidates.add(directory / "domains.txt")
     return sorted(path for path in candidates if path.exists())
 
 
-def remove_mesher_outputs(workspace: Path, stem: str) -> list[Path]:
-    removed = existing_mesher_outputs(workspace, stem)
+def existing_mesher_outputs(
+    workspace: Path,
+    output_directory: Path,
+    stem: str,
+) -> list[Path]:
+    candidates = set(controlled_outputs(workspace, stem))
+    if output_directory != workspace:
+        candidates.update(controlled_outputs(output_directory, stem))
+    return sorted(candidates)
+
+
+def remove_mesher_outputs(
+    workspace: Path,
+    output_directory: Path,
+    stem: str,
+) -> list[Path]:
+    removed = existing_mesher_outputs(workspace, output_directory, stem)
     for path in removed:
         if path.is_dir():
             shutil.rmtree(path)
         else:
             path.unlink()
+    if output_directory != workspace and output_directory.is_dir():
+        try:
+            output_directory.rmdir()
+        except OSError:
+            pass
     return removed
+
+
+def relocate_mesher_outputs(
+    workspace: Path,
+    output_directory: Path,
+    stem: str,
+) -> list[Path]:
+    """Move root-level mesher products into the SEM3D solver mesh directory."""
+    if output_directory == workspace:
+        return []
+
+    root_outputs = controlled_outputs(workspace, stem)
+    require(root_outputs, "Mesher returned success but produced no controlled outputs")
+    output_directory.mkdir(parents=True, exist_ok=True)
+
+    relocated: list[Path] = []
+    for source in root_outputs:
+        destination = output_directory / source.name
+        if destination.exists():
+            raise FileExistsError(
+                f"Refusing to overwrite existing organized mesh output: {destination}"
+            )
+        shutil.move(str(source), str(destination))
+        relocated.append(destination)
+    return relocated
 
 
 def validate_required_inputs(workspace: Path) -> dict[str, int]:
@@ -105,26 +163,33 @@ def validate_required_inputs(workspace: Path) -> dict[str, int]:
 
 def audit_mesher_outputs(
     workspace: Path,
+    output_directory: Path,
     stem: str,
     partition_count: int,
 ) -> dict[str, Any]:
-    expected = expected_partition_paths(workspace, stem, partition_count)
+    expected = expected_partition_paths(output_directory, stem, partition_count)
     missing = [path for path in expected if not path.is_file()]
     empty = [path for path in expected if path.is_file() and path.stat().st_size == 0]
 
-    actual = sorted(workspace.glob(f"{stem}.[0-9][0-9][0-9][0-9].h5"))
+    actual = sorted(output_directory.glob(f"{stem}.[0-9][0-9][0-9][0-9].h5"))
     expected_names = {path.name for path in expected}
     unexpected = [path for path in actual if path.name not in expected_names]
 
-    domains = workspace / "domains.txt"
+    domains = output_directory / "domains.txt"
     missing_master_xmf = [
-        workspace / name
+        output_directory / name
         for name in MASTER_XMF_FILES
-        if not (workspace / name).is_file()
-        or (workspace / name).stat().st_size == 0
+        if not (output_directory / name).is_file()
+        or (output_directory / name).stat().st_size == 0
     ]
+    stray_root_outputs = (
+        controlled_outputs(workspace, stem)
+        if output_directory != workspace
+        else []
+    )
 
     return {
+        "output_directory": str(output_directory),
         "partition_count_expected": partition_count,
         "partition_count_actual": len(actual),
         "partition_files": [
@@ -139,14 +204,17 @@ def audit_mesher_outputs(
             "bytes": domains.stat().st_size if domains.is_file() else 0,
         },
         "missing_or_empty_master_xmf": [path.name for path in missing_master_xmf],
+        "stray_root_outputs": [path.name for path in stray_root_outputs],
         "passed": (
-            len(actual) == partition_count
+            output_directory.is_dir()
+            and len(actual) == partition_count
             and not missing
             and not empty
             and not unexpected
             and domains.is_file()
             and domains.stat().st_size > 0
             and not missing_master_xmf
+            and not stray_root_outputs
         ),
     }
 
@@ -156,18 +224,20 @@ def write_manifest(
     *,
     config: Path,
     mesher: Path,
+    output_directory: Path,
     timeout_seconds: float,
     return_code: int,
     elapsed_seconds: float,
     input_sizes: dict[str, int],
     removed_outputs: list[Path],
+    relocated_outputs: list[Path],
     audit: dict[str, Any],
 ) -> Path:
     logs = workspace / "logs"
     logs.mkdir(parents=True, exist_ok=True)
     manifest_path = logs / "mesher_manifest.json"
     manifest = {
-        "schema_version": 1,
+        "schema_version": 2,
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "workspace": str(workspace),
         "config": str(config),
@@ -175,11 +245,13 @@ def write_manifest(
         "command": [str(mesher)],
         "stdin": "mesh.input",
         "working_directory": str(workspace),
+        "solver_mesh_directory": str(output_directory),
         "timeout_seconds": timeout_seconds,
         "return_code": return_code,
         "elapsed_seconds": elapsed_seconds,
         "input_sizes": input_sizes,
-        "removed_stale_outputs": [path.name for path in removed_outputs],
+        "removed_stale_outputs": [str(path.relative_to(workspace)) for path in removed_outputs],
+        "relocated_outputs": [str(path.relative_to(workspace)) for path in relocated_outputs],
         "audit": audit,
     }
     manifest_path.write_text(
@@ -195,6 +267,7 @@ def print_plan(
     config: Path,
     workspace: Path,
     mesher: Path,
+    output_directory: Path,
     stem: str,
     partition_count: int,
     timeout_seconds: float,
@@ -209,6 +282,7 @@ def print_plan(
     print(f"workspace = {workspace}")
     print(f"mesher = {mesher}")
     print(f"mesh stem = {stem}")
+    print(f"solver mesh directory = {output_directory}")
     print(f"expected partitions = {partition_count}")
     print(f"timeout seconds = {timeout_seconds:g}")
     print(f"overwrite stale outputs = {overwrite}")
@@ -217,6 +291,8 @@ def print_plan(
     print("effective invocation:")
     print(f"  cd {workspace}")
     print(f"  {mesher} < mesh.input")
+    if output_directory != workspace:
+        print(f"  organize generated mesh products under {output_directory}")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -253,7 +329,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--overwrite",
         action="store_true",
-        help="Remove existing mesh4spec*/domains.txt outputs before execution.",
+        help="Remove existing controlled mesh outputs before execution.",
     )
     parser.add_argument(
         "--audit-only",
@@ -278,14 +354,20 @@ def main(argv: list[str] | None = None) -> int:
     mesh_cfg = spec["sem3d_mesh"]
     stem = str(mesh_cfg["mesh_file_stem"])
     partition_count = int(mesh_cfg["partition_count"])
+    output_directory = resolve_mesh_output_directory(
+        workspace,
+        str(mesh_cfg.get("output_directory", "sem")),
+    )
     require(partition_count > 0, "partition_count must be positive")
     require(args.timeout_seconds > 0, "timeout-seconds must be positive")
+    require(not (args.execute and args.audit_only), "--execute and --audit-only are mutually exclusive")
 
     print_plan(
         root=root,
         config=config_path,
         workspace=workspace,
         mesher=mesher,
+        output_directory=output_directory,
         stem=stem,
         partition_count=partition_count,
         timeout_seconds=args.timeout_seconds,
@@ -300,10 +382,17 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  {name:12s} {size:8d} bytes")
 
     if args.audit_only:
-        audit = audit_mesher_outputs(workspace, stem, partition_count)
+        audit = audit_mesher_outputs(
+            workspace,
+            output_directory,
+            stem,
+            partition_count,
+        )
         print()
+        print(f"solver_mesh_directory = {output_directory}")
         print(f"partition_count = {audit['partition_count_actual']}")
         print(f"domains.txt = {audit['domains_txt']}")
+        print(f"stray_root_outputs = {audit['stray_root_outputs']}")
         print(f"audit_passed = {audit['passed']}")
         if audit["passed"]:
             print("RESULT = PASS_SEM3D_MESHER_OUTPUT_AUDIT")
@@ -321,9 +410,9 @@ def main(argv: list[str] | None = None) -> int:
     require(mesher.is_file(), f"Mesher executable not found: {mesher}")
     require(os.access(mesher, os.X_OK), f"Mesher is not executable: {mesher}")
 
-    stale = existing_mesher_outputs(workspace, stem)
+    stale = existing_mesher_outputs(workspace, output_directory, stem)
     if stale and not args.overwrite:
-        names = ", ".join(path.name for path in stale[:12])
+        names = ", ".join(str(path.relative_to(workspace)) for path in stale[:12])
         if len(stale) > 12:
             names += f", ... ({len(stale)} total)"
         raise FileExistsError(
@@ -333,7 +422,7 @@ def main(argv: list[str] | None = None) -> int:
 
     removed_outputs: list[Path] = []
     if stale:
-        removed_outputs = remove_mesher_outputs(workspace, stem)
+        removed_outputs = remove_mesher_outputs(workspace, output_directory, stem)
 
     logs = workspace / "logs"
     logs.mkdir(parents=True, exist_ok=True)
@@ -367,16 +456,31 @@ def main(argv: list[str] | None = None) -> int:
         return_code = 124
 
     elapsed = time.perf_counter() - started
-    audit = audit_mesher_outputs(workspace, stem, partition_count)
+    relocated_outputs: list[Path] = []
+    if not timed_out and return_code == 0:
+        relocated_outputs = relocate_mesher_outputs(
+            workspace,
+            output_directory,
+            stem,
+        )
+
+    audit = audit_mesher_outputs(
+        workspace,
+        output_directory,
+        stem,
+        partition_count,
+    )
     manifest_path = write_manifest(
         workspace,
         config=config_path,
         mesher=mesher,
+        output_directory=output_directory,
         timeout_seconds=args.timeout_seconds,
         return_code=return_code,
         elapsed_seconds=elapsed,
         input_sizes=input_sizes,
         removed_outputs=removed_outputs,
+        relocated_outputs=relocated_outputs,
         audit=audit,
     )
 
@@ -386,8 +490,11 @@ def main(argv: list[str] | None = None) -> int:
     print(f"stdout = {stdout_path}")
     print(f"stderr = {stderr_path}")
     print(f"manifest = {manifest_path}")
+    print(f"solver_mesh_directory = {output_directory}")
+    print(f"relocated_output_count = {len(relocated_outputs)}")
     print(f"partition_count = {audit['partition_count_actual']}")
     print(f"domains.txt = {audit['domains_txt']}")
+    print(f"stray_root_outputs = {audit['stray_root_outputs']}")
 
     if timed_out:
         print("RESULT = FAIL_SEM3D_MESHER_TIMEOUT")
