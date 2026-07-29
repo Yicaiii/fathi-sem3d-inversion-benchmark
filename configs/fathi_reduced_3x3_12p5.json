@@ -1,0 +1,393 @@
+{
+  "schema_version": 1,
+  "name": "fathi_reduced_3x3_12p5",
+  "role": "canonical_standalone_benchmark_specification",
+  "classification": {
+    "family": "Fathi-inspired 3D elastic full-waveform inversion benchmark",
+    "implementation": "Reduced SEM3D implementation",
+    "source_discretization": "Nine discrete vertical point sources on a 3x3 surface grid",
+    "paper_fidelity_note": "The material profile, domain scale, density and Gaussian-loading concept are derived from Fathi et al. (2015). The exact 3x3 source arrangement is an explicit benchmark implementation choice and is not claimed to be an exact source layout reported in the paper."
+  },
+  "iteration_convention": {
+    "iteration_argument": "k",
+    "parent_directory_format": "iter_{k:03d}",
+    "next_directory_format": "iter_{k_plus_1:03d}",
+    "transition_directory_format": "iter_{k:03d}_to_iter_{k_plus_1:03d}",
+    "initial_iteration": 0
+  },
+  "domain": {
+    "dimension": 3,
+    "x_min_m": -20.0,
+    "x_max_m": 20.0,
+    "y_min_m": -20.0,
+    "y_max_m": 20.0,
+    "z_min_m": -50.0,
+    "z_max_m": 0.0
+  },
+  "material_grid": {
+    "shape": [
+      41,
+      33,
+      33
+    ],
+    "array_order": "field[iz, iy, ix]",
+    "flatten_order": "C",
+    "dtype": "float64",
+    "dataset": "samples",
+    "x_min_global_m": [
+      -20.0,
+      -20.0,
+      -50.0
+    ],
+    "x_max_global_m": [
+      20.0,
+      20.0,
+      0.0
+    ],
+    "hdf5": {
+      "chunks": null,
+      "compression": null,
+      "shuffle": false,
+      "fletcher32": false,
+      "file_attributes": {
+        "xMinGlob": [
+          -20.0,
+          -20.0,
+          -50.0
+        ],
+        "xMaxGlob": [
+          20.0,
+          20.0,
+          0.0
+        ]
+      }
+    }
+  },
+  "material_models": {
+    "density_kg_m3": 2000.0,
+    "initial_homogeneous": {
+      "lambda_pa": 80000000.0,
+      "mu_pa": 80000000.0,
+      "kappa_pa": 133333333.33333333,
+      "kappa_definition": "kappa = lambda + (2/3) * mu",
+      "kappa_generation": "lambda + (2/3) * mu using float64 operation order"
+    },
+    "true_layered": {
+      "coordinate_rule": "assign by physical z coordinate on material-grid axis 0",
+      "layers": [
+        {
+          "z_condition": "z < -27.0",
+          "z_min_m": -50.0,
+          "z_max_m_exclusive": -27.0,
+          "lambda_pa": 125000000.0,
+          "mu_pa": 125000000.0,
+          "kappa_pa": 208333333.3333333,
+          "kappa_generation": "lambda + (2/3) * mu using float64 operation order"
+        },
+        {
+          "z_condition": "-27.0 <= z < -12.0",
+          "z_min_m": -27.0,
+          "z_max_m_exclusive": -12.0,
+          "lambda_pa": 101250000.0,
+          "mu_pa": 101250000.0,
+          "kappa_pa": 168750000.0,
+          "kappa_generation": "lambda + (2/3) * mu using float64 operation order"
+        },
+        {
+          "z_condition": "z >= -12.0",
+          "z_min_m": -12.0,
+          "z_max_m_inclusive": 0.0,
+          "lambda_pa": 80000000.0,
+          "mu_pa": 80000000.0,
+          "kappa_pa": 133333333.33333333,
+          "kappa_generation": "lambda + (2/3) * mu using float64 operation order"
+        }
+      ],
+      "expected_axis0_index_ranges": [
+        {
+          "indices_inclusive": [
+            0,
+            18
+          ],
+          "mu_pa": 125000000.0
+        },
+        {
+          "indices_inclusive": [
+            19,
+            30
+          ],
+          "mu_pa": 101250000.0
+        },
+        {
+          "indices_inclusive": [
+            31,
+            40
+          ],
+          "mu_pa": 80000000.0
+        }
+      ]
+    }
+  },
+  "sem3d_mesh": {
+    "mesh_file_stem": "mesh4spec",
+    "partition_count": 12,
+    "mesh_input_lines": [
+      "12",
+      "1"
+    ],
+    "mat_dat": {
+      "x": {
+        "min_m": -20.0,
+        "max_m": 20.0,
+        "spacing_m": 1.25
+      },
+      "y": {
+        "min_m": -20.0,
+        "max_m": 20.0,
+        "spacing_m": 1.25
+      },
+      "surface_z_m": 0.0,
+      "layer_count": 3,
+      "vertical_blocks": [
+        {
+          "thickness_m": 12.0,
+          "element_count": 10
+        },
+        {
+          "thickness_m": 15.0,
+          "element_count": 12
+        },
+        {
+          "thickness_m": 23.0,
+          "element_count": 18
+        }
+      ],
+      "validated_trailing_lines": [
+        "1",
+        "0 1",
+        "1"
+      ]
+    },
+    "mater_in": {
+      "material_count": 3,
+      "materials": [
+        {
+          "type": "S",
+          "cp_m_s": 346.4101615,
+          "cs_m_s": 200.0,
+          "density_kg_m3": 2000.0,
+          "qp": 1000.0,
+          "qs": 1000.0
+        },
+        {
+          "type": "S",
+          "cp_m_s": 389.7114317,
+          "cs_m_s": 225.0,
+          "density_kg_m3": 2000.0,
+          "qp": 1000.0,
+          "qs": 1000.0
+        },
+        {
+          "type": "S",
+          "cp_m_s": 433.0127019,
+          "cs_m_s": 250.0,
+          "density_kg_m3": 2000.0,
+          "qp": 1000.0,
+          "qs": 1000.0
+        }
+      ]
+    },
+    "material_input_policy": "Generate the validated 36-material/PML mapping deterministically from this fixed reduced benchmark geometry; do not copy a local template.",
+    "material_spec": {
+      "deftype": "Kappa_Mu_Rho",
+      "spacedef": "file",
+      "kappa_file": "mat/h5/Mat_0_Kappa.h5",
+      "mu_file": "mat/h5/Mat_0_Mu.h5",
+      "density_file": "mat/h5/Mat_0_Density.h5",
+      "solid_material_id": 0,
+      "solid_pml_copy_ids": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26
+      ]
+    }
+  },
+  "forward_operator": {
+    "source_count": 9,
+    "source_coordinates_m": [
+      [
+        -12.5,
+        -12.5,
+        0.0
+      ],
+      [
+        0.0,
+        -12.5,
+        0.0
+      ],
+      [
+        12.5,
+        -12.5,
+        0.0
+      ],
+      [
+        -12.5,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        12.5,
+        0.0,
+        0.0
+      ],
+      [
+        -12.5,
+        12.5,
+        0.0
+      ],
+      [
+        0.0,
+        12.5,
+        0.0
+      ],
+      [
+        12.5,
+        12.5,
+        0.0
+      ]
+    ],
+    "source_type": "impulse",
+    "source_direction": [
+      0.0,
+      0.0,
+      1.0
+    ],
+    "source_time_function_file": "gaussian_stf.txt",
+    "source_operator_invariant": "True observed, initial, parent and candidate forward workspaces must use identical sources, receivers, time function and simulation settings.",
+    "simulation_time_s": 0.45,
+    "dimension": 3,
+    "ngll": 5,
+    "time_scheme": {
+      "accel_scheme": false,
+      "veloc_scheme": true,
+      "alpha": 0.5,
+      "beta": -0.5,
+      "gamma": 1.0,
+      "courant": 0.2
+    }
+  },
+  "receivers": {
+    "physical": {
+      "type": "points",
+      "file": "stations.txt",
+      "x_min_m": -17.5,
+      "x_max_m": 17.5,
+      "y_min_m": -17.5,
+      "y_max_m": 17.5,
+      "spacing_m": 2.5,
+      "z_m": 0.0,
+      "shape": [
+        15,
+        15
+      ],
+      "count": 225,
+      "period": 1
+    },
+    "strict_full_grid": {
+      "count": 38440,
+      "require_dudx": true,
+      "generation_note": "Prepared by the strict-forward stage from the generated base workspace; the physical observed receiver file remains stations.txt."
+    }
+  },
+  "source_time_function": {
+    "profile_name": "reduced_gaussian",
+    "classification": "Validated reduced benchmark STF, not labelled as Fathi p20/p30/p40",
+    "formula": "amplitude * exp(-((t - center_s) / sigma_s)^2)",
+    "amplitude": 1.0,
+    "center_s": 0.01,
+    "sigma_s": 0.0014,
+    "start_s": 0.0,
+    "end_s": 0.1,
+    "dt_s": 2e-05,
+    "row_count": 5001,
+    "expected_nonzero_count": 831,
+    "expected_first_nonzero_time_s": 0.0017,
+    "expected_last_nonzero_time_s": 0.0183,
+    "active_start_s": 0.0017,
+    "active_end_s": 0.0183,
+    "positive_floor_absolute": 1e-15
+  },
+  "bootstrap_workspaces": {
+    "true_observed": {
+      "run_name": "fathi_reduced_3x3_true_layered",
+      "material_model": "true_layered",
+      "output_directory": "data/bootstrap/fathi_reduced_3x3_12p5/true_observed",
+      "save_traces": true,
+      "traces_format": "hdf5",
+      "save_snapshots": false
+    },
+    "initial_iter_000": {
+      "run_name": "fathi_reduced_3x3_initial_80MPa",
+      "material_model": "initial_homogeneous",
+      "output_directory": "data/inversion_tv_fathi80/iter_000/accepted",
+      "state_file": "results/fathi_loop_tv_fathi80/states_corrected/iter_000_state_v2_corrected.npz",
+      "save_traces": false,
+      "save_snapshots": false
+    }
+  },
+  "generated_files": [
+    "mesh.input",
+    "mat.dat",
+    "mater.in",
+    "material.input",
+    "material.spec",
+    "input.spec",
+    "stations.txt",
+    "gaussian_stf.txt",
+    "mat/h5/Mat_0_Kappa.h5",
+    "mat/h5/Mat_0_Mu.h5",
+    "mat/h5/Mat_0_Density.h5"
+  ],
+  "validation": {
+    "canonical_true_reference_role": "semantic oracle only; not required at runtime",
+    "canonical_initial_reference_role": "semantic oracle only; not required at runtime",
+    "checks": [
+      "source operator equality between true and initial workspaces",
+      "225 physical receiver coordinates",
+      "material HDF5 dataset, shape, dtype and global-coordinate attributes",
+      "true layered depth-axis index ranges",
+      "homogeneous 80 MPa initial material",
+      "finite material values",
+      "generated STF row count, peak and nonzero interval",
+      "absence of runtime traces, logs and result folders before execution"
+    ]
+  }
+}
