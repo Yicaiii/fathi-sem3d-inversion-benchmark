@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import re
@@ -100,6 +101,25 @@ class StandaloneWorkspaceGeneratorTests(unittest.TestCase):
                 )
                 self.assertAlmostEqual(sim_time, 0.45, places=14)
                 self.assertIn("save_traces = true;", input_spec)
+
+    def test_strict_full_grid_stations_match_canonical_oracle(self) -> None:
+        text, stations = self.generator.generate_stations(
+            self.spec,
+            receiver_role="strict_full_grid",
+        )
+        self.assertEqual(stations.shape, (38440, 3))
+        self.assertEqual(
+            tuple(stations[0]),
+            (-18.75, -18.75, 0.0),
+        )
+        self.assertEqual(
+            tuple(stations[-1]),
+            (18.75, 18.75, -48.75),
+        )
+        self.assertEqual(
+            hashlib.sha256(text.encode("utf-8")).hexdigest(),
+            "8af4381e963ad118c1054639c8ee9ac4bb1b9b604f33a09467ea10d0e6191769",
+        )
 
     def test_true_layered_depth_axis_and_values(self) -> None:
         fields = self.generator.material_fields(

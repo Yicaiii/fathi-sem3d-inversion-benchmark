@@ -323,9 +323,28 @@
       "period": 1
     },
     "strict_full_grid": {
+      "type": "points",
+      "file": "stations.txt",
+      "x_start_m": -18.75,
+      "x_end_m": 18.75,
+      "x_spacing_m": 1.25,
+      "y_start_m": -18.75,
+      "y_end_m": 18.75,
+      "y_spacing_m": 1.25,
+      "z_start_m": 0.0,
+      "z_end_m": -48.75,
+      "z_spacing_m": -1.25,
+      "shape_zyx": [
+        40,
+        31,
+        31
+      ],
       "count": 38440,
+      "iteration_order": "z outer, y middle, x inner (x changes fastest)",
+      "format_decimals": 10,
+      "sha256": "8af4381e963ad118c1054639c8ee9ac4bb1b9b604f33a09467ea10d0e6191769",
       "require_dudx": true,
-      "generation_note": "Prepared by the strict-forward stage from the generated base workspace; the physical observed receiver file remains stations.txt."
+      "generation_note": "Generated deterministically from this specification by the strict-forward preparation stage; no historical workspace template is a runtime dependency."
     }
   },
   "source_time_function": {

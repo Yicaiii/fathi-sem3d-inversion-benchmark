@@ -11,6 +11,7 @@ The command is plan-only unless --write is supplied.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -215,32 +216,109 @@ def inclusive_axis(minimum: float, maximum: float, spacing: float) -> np.ndarray
     return np.linspace(minimum, maximum, count + 1, dtype=np.float64)
 
 
-def generate_stations(spec: dict[str, Any]) -> tuple[str, np.ndarray]:
-    cfg = spec["receivers"]["physical"]
-    x_values = inclusive_axis(
-        float(cfg["x_min_m"]),
-        float(cfg["x_max_m"]),
-        float(cfg["spacing_m"]),
+def ordered_axis(start: float, end: float, spacing: float) -> np.ndarray:
+    """Return an inclusive axis while preserving the requested direction."""
+    require(not math.isclose(spacing, 0.0), "Axis spacing must be non-zero")
+    count_float = (end - start) / spacing
+    count = int(round(count_float))
+    require(count >= 0, "Axis spacing has the wrong sign")
+    require(
+        math.isclose(count_float, count, rel_tol=0.0, abs_tol=1e-10),
+        "Axis extent is not divisible by spacing",
     )
-    y_values = inclusive_axis(
-        float(cfg["y_min_m"]),
-        float(cfg["y_max_m"]),
-        float(cfg["spacing_m"]),
+    return start + np.arange(count + 1, dtype=np.float64) * spacing
+
+
+def generate_stations(
+    spec: dict[str, Any],
+    *,
+    receiver_role: str = "physical",
+) -> tuple[str, np.ndarray]:
+    """Generate either physical receivers or the strict full-grid controls."""
+    require(
+        receiver_role in {"physical", "strict_full_grid"},
+        f"Unsupported receiver role: {receiver_role}",
     )
-    z_value = float(cfg["z_m"])
+    cfg = spec["receivers"][receiver_role]
+
+    if receiver_role == "physical":
+        x_values = inclusive_axis(
+            float(cfg["x_min_m"]),
+            float(cfg["x_max_m"]),
+            float(cfg["spacing_m"]),
+        )
+        y_values = inclusive_axis(
+            float(cfg["y_min_m"]),
+            float(cfg["y_max_m"]),
+            float(cfg["spacing_m"]),
+        )
+        z_value = float(cfg["z_m"])
+        rows = np.asarray(
+            [(x, y, z_value) for y in y_values for x in x_values],
+            dtype=np.float64,
+        )
+        require(
+            rows.shape == (int(cfg["count"]), 3),
+            f"Expected {cfg['count']} physical stations, got {rows.shape[0]}",
+        )
+        text = "".join(
+            f"{x:.6f} {y:.6f} {z:.1f}\n"
+            for x, y, z in rows
+        )
+        return text, rows
+
+    x_values = ordered_axis(
+        float(cfg["x_start_m"]),
+        float(cfg["x_end_m"]),
+        float(cfg["x_spacing_m"]),
+    )
+    y_values = ordered_axis(
+        float(cfg["y_start_m"]),
+        float(cfg["y_end_m"]),
+        float(cfg["y_spacing_m"]),
+    )
+    z_values = ordered_axis(
+        float(cfg["z_start_m"]),
+        float(cfg["z_end_m"]),
+        float(cfg["z_spacing_m"]),
+    )
+
+    expected_shape = tuple(int(value) for value in cfg["shape_zyx"])
+    actual_shape = (len(z_values), len(y_values), len(x_values))
+    require(
+        actual_shape == expected_shape,
+        f"Expected strict-grid shape {expected_shape}, got {actual_shape}",
+    )
 
     rows = np.asarray(
-        [(x, y, z_value) for y in y_values for x in x_values],
+        [
+            (x, y, z)
+            for z in z_values
+            for y in y_values
+            for x in x_values
+        ],
         dtype=np.float64,
     )
     require(
         rows.shape == (int(cfg["count"]), 3),
-        f"Expected {cfg['count']} stations, got {rows.shape[0]}",
+        f"Expected {cfg['count']} strict stations, got {rows.shape[0]}",
     )
+
+    decimals = int(cfg.get("format_decimals", 10))
     text = "".join(
-        f"{x:.6f} {y:.6f} {z:.1f}\n"
+        f"{x:.{decimals}f} {y:.{decimals}f} {z:.{decimals}f}\n"
         for x, y, z in rows
     )
+
+    expected_hash = cfg.get("sha256")
+    if expected_hash:
+        actual_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        require(
+            actual_hash == expected_hash,
+            "Strict full-grid station SHA256 mismatch: "
+            f"expected {expected_hash}, got {actual_hash}",
+        )
+
     return text, rows
 
 

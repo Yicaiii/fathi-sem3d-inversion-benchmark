@@ -36,8 +36,7 @@ report_dir.mkdir(parents=True, exist_ok=True)
 out_txt = report_dir / f"{transition}_prepare_strict_forward_task.txt"
 out_json = report_dir / f"{transition}_prepare_strict_forward_task.json"
 
-module_450b = "scripts.fathi_benchmark.generic_from_legacy.450B_select_strict_forward_full_template_generic"
-module_450c = "scripts.fathi_benchmark.generic_from_legacy.450C_prepare_strict_full_forward_run_generic"
+module_prepare = "scripts.fathi_benchmark.prepare_strict_forward_from_accepted"
 module_forward_operator = "scripts.fathi_benchmark.enforce_forward_operator"
 
 def count_capteurs():
@@ -103,20 +102,25 @@ lines.append("")
 if ok_before and not args.force:
     payload["result"] = "PASS_ALREADY_EXISTS"
     lines.append("Strict forward workspace is already prepared.")
-    lines.append("No 450C execution was launched.")
+    lines.append("No fresh preparation execution was launched.")
 
 elif not args.execute:
     payload["result"] = "PASS_PLAN_ONLY"
     lines.append("Plan only. Would run:")
-    lines.append(f"  python3 -m {module_450b} --context {ctx_path.relative_to(ROOT)}")
-    lines.append(f"  python3 -m {module_450c} --context {ctx_path.relative_to(ROOT)}")
-    lines.append(f"  python3 -m {module_forward_operator} --context {ctx_path.relative_to(ROOT)}")
+    lines.append(
+        f"  python3 -m {module_prepare} "
+        f"--context {ctx_path.relative_to(ROOT)}"
+    )
+    lines.append(
+        f"  python3 -m {module_forward_operator} "
+        f"--context {ctx_path.relative_to(ROOT)}"
+    )
 
 else:
     script_runs = []
     all_child_ok = True
 
-    for script in [module_450b, module_450c, module_forward_operator]:
+    for script in [module_prepare, module_forward_operator]:
         cmd = [
             sys.executable,
             "-m",
@@ -124,6 +128,8 @@ else:
             "--context",
             str(ctx_path.relative_to(ROOT)),
         ]
+        if script == module_prepare and args.force:
+            cmd.append("--force")
 
         lines.append("")
         lines.append("Running:")
