@@ -83,6 +83,24 @@ class StandaloneWorkspaceGeneratorTests(unittest.TestCase):
                 for field in fields.values():
                     self.assertTrue(np.isfinite(field).all())
 
+    def test_full_bootstrap_models_save_physical_traces(self) -> None:
+        for model in ("true_layered", "initial_homogeneous"):
+            with self.subTest(model=model):
+                input_spec = self.generator.generate_input_spec(
+                    self.spec,
+                    model=model,
+                )
+                sim_time_line = next(
+                    line
+                    for line in input_spec.splitlines()
+                    if line.startswith("sim_time = ")
+                )
+                sim_time = float(
+                    sim_time_line.split("=", 1)[1].strip().rstrip(";")
+                )
+                self.assertAlmostEqual(sim_time, 0.45, places=14)
+                self.assertIn("save_traces = true;", input_spec)
+
     def test_true_layered_depth_axis_and_values(self) -> None:
         fields = self.generator.material_fields(
             self.spec,

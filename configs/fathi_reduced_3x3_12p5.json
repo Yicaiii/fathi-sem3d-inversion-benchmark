@@ -360,7 +360,7 @@
       "material_model": "initial_homogeneous",
       "output_directory": "data/inversion_tv_fathi80/iter_000/accepted",
       "state_file": "results/fathi_loop_tv_fathi80/states_corrected/iter_000_state_v2_corrected.npz",
-      "save_traces": false,
+      "save_traces": true,
       "save_snapshots": false
     }
   },
