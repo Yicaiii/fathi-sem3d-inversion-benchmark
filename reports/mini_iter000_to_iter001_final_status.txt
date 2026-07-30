@@ -1,0 +1,27 @@
+
+====================================================================================================
+/home/crellamaybe/sem3d_fathi_clean/.venv/bin/python -m scripts.mini_e2e.status --config configs/fathi_mini_e2e_3600.json
+====================================================================================================
+
+MINI E2E STATUS
+===============
+preflight                exists=True  result=PASS                 path=/mnt/c/Users/crellamaybe/Documents/GitHub/fathi-benchmark-refactor/results/fathi_loop_tv_fathi80_mini3600/iter_000_to_iter_001/reports/preflight.json
+residual                 exists=True  result=PASS                 path=/mnt/c/Users/crellamaybe/Documents/GitHub/fathi-benchmark-refactor/results/fathi_loop_tv_fathi80_mini3600/iter_000_to_iter_001/residual_sources/mini_residual_summary.json
+adjoint_preparation      exists=True  result=PASS                 path=/mnt/c/Users/crellamaybe/Documents/GitHub/fathi-benchmark-refactor/results/fathi_loop_tv_fathi80_mini3600/iter_000_to_iter_001/reports/adjoint_preparation.json
+adjoint_x                exists=True  result=PASS                 path=/mnt/c/Users/crellamaybe/Documents/GitHub/fathi-benchmark-refactor/results/fathi_loop_tv_fathi80_mini3600/iter_000_to_iter_001/reports/adjoint_run_x.json
+adjoint_y                exists=True  result=PASS                 path=/mnt/c/Users/crellamaybe/Documents/GitHub/fathi-benchmark-refactor/results/fathi_loop_tv_fathi80_mini3600/iter_000_to_iter_001/reports/adjoint_run_y.json
+adjoint_z                exists=True  result=PASS                 path=/mnt/c/Users/crellamaybe/Documents/GitHub/fathi-benchmark-refactor/results/fathi_loop_tv_fathi80_mini3600/iter_000_to_iter_001/reports/adjoint_run_z.json
+manifests                exists=True  result=PASS                 path=/mnt/c/Users/crellamaybe/Documents/GitHub/fathi-benchmark-refactor/results/fathi_loop_tv_fathi80_mini3600/iter_000_to_iter_001/reports/trace_manifests.json
+rhs_x                    exists=True  result=PASS                 path=/mnt/c/Users/crellamaybe/Documents/GitHub/fathi-benchmark-refactor/results/fathi_loop_tv_fathi80_mini3600/iter_000_to_iter_001/component_rhs/mini_RHS_x_summary.json
+rhs_y                    exists=True  result=PASS                 path=/mnt/c/Users/crellamaybe/Documents/GitHub/fathi-benchmark-refactor/results/fathi_loop_tv_fathi80_mini3600/iter_000_to_iter_001/component_rhs/mini_RHS_y_summary.json
+rhs_z                    exists=True  result=PASS                 path=/mnt/c/Users/crellamaybe/Documents/GitHub/fathi-benchmark-refactor/results/fathi_loop_tv_fathi80_mini3600/iter_000_to_iter_001/component_rhs/mini_RHS_z_summary.json
+rhs_total                exists=True  result=PASS                 path=/mnt/c/Users/crellamaybe/Documents/GitHub/fathi-benchmark-refactor/results/fathi_loop_tv_fathi80_mini3600/iter_000_to_iter_001/component_rhs/mini_RHS_total_summary.json
+mtilde                   exists=True  result=PASS                 path=/mnt/c/Users/crellamaybe/Documents/GitHub/fathi-benchmark-refactor/results/fathi_loop_tv_fathi80_mini3600/iter_000_to_iter_001/mtilde_solve/mini_mtilde_summary.json
+candidates               exists=True  result=PASS                 path=/mnt/c/Users/crellamaybe/Documents/GitHub/fathi-benchmark-refactor/results/fathi_loop_tv_fathi80_mini3600/iter_000_to_iter_001/reports/candidate_generation.json
+candidate_workspaces     exists=True  result=PASS                 path=/mnt/c/Users/crellamaybe/Documents/GitHub/fathi-benchmark-refactor/results/fathi_loop_tv_fathi80_mini3600/iter_000_to_iter_001/reports/candidate_workspace_preparation.json
+candidate_runs           exists=True  result=PASS                 path=/mnt/c/Users/crellamaybe/Documents/GitHub/fathi-benchmark-refactor/results/fathi_loop_tv_fathi80_mini3600/iter_000_to_iter_001/reports/candidate_runs_summary.json
+selection                exists=True  result=PASS_ACCEPTED        path=/mnt/c/Users/crellamaybe/Documents/GitHub/fathi-benchmark-refactor/results/fathi_loop_tv_fathi80_mini3600/iter_000_to_iter_001/candidate_misfits/mini_candidate_selection.json
+iter001_accepted         exists=True  result=PASS                 path=/mnt/c/Users/crellamaybe/Documents/GitHub/fathi-benchmark-refactor/data/inversion_tv_fathi80_mini3600/iter_001/accepted/MINI_ITER001_ACCEPTANCE.json
+iter001_state            exists=True  result=                     path=/mnt/c/Users/crellamaybe/Documents/GitHub/fathi-benchmark-refactor/results/fathi_loop_tv_fathi80_mini3600/states_corrected/iter_001_state_v2_corrected.npz
+
+RESULT = COMPLETE_MINI_ITER000_TO_ITER001
