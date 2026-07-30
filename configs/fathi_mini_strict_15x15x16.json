@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "name": "fathi_reduced_3x3_12p5",
-  "role": "canonical_standalone_benchmark_specification",
+  "name": "fathi_mini_strict_15x15x16",
+  "role": "mini_strict_forward_smoke_profile",
   "classification": {
     "family": "Fathi-inspired 3D elastic full-waveform inversion benchmark",
-    "implementation": "Reduced SEM3D implementation",
+    "implementation": "Reduced SEM3D implementation with a smaller central/shallow strict-forward sampling region for rapid pipeline validation",
     "source_discretization": "Nine discrete vertical point sources on a 3x3 surface grid",
     "paper_fidelity_note": "The material profile, domain scale, density and Gaussian-loading concept are derived from Fathi et al. (2015). The exact 3x3 source arrangement is an explicit benchmark implementation choice and is not claimed to be an exact source layout reported in the paper."
   },
@@ -325,26 +325,26 @@
     "strict_full_grid": {
       "type": "points",
       "file": "stations.txt",
-      "x_start_m": -18.75,
-      "x_end_m": 18.75,
+      "x_start_m": -8.75,
+      "x_end_m": 8.75,
       "x_spacing_m": 1.25,
-      "y_start_m": -18.75,
-      "y_end_m": 18.75,
+      "y_start_m": -8.75,
+      "y_end_m": 8.75,
       "y_spacing_m": 1.25,
       "z_start_m": 0.0,
-      "z_end_m": -48.75,
+      "z_end_m": -18.75,
       "z_spacing_m": -1.25,
       "shape_zyx": [
-        40,
-        31,
-        31
+        16,
+        15,
+        15
       ],
-      "count": 38440,
+      "count": 3600,
       "iteration_order": "z outer, y middle, x inner (x changes fastest)",
       "format_decimals": 10,
-      "sha256": "8af4381e963ad118c1054639c8ee9ac4bb1b9b604f33a09467ea10d0e6191769",
+      "sha256": "5991ed1a340458cf7c40344b2342c8ff9a9d6a562309550888609aae7ce039fd",
       "require_dudx": true,
-      "generation_note": "Generated deterministically from this specification by the strict-forward preparation stage; no historical workspace template is a runtime dependency."
+      "generation_note": "Mini strict-forward smoke profile: central 17.5 m x 17.5 m horizontal region and top 18.75 m depth. The canonical large 38440-point profile remains unchanged."
     }
   },
   "source_time_function": {
@@ -409,5 +409,19 @@
       "generated STF row count, peak and nonzero interval",
       "absence of runtime traces, logs and result folders before execution"
     ]
+  },
+  "mini_profile": {
+    "scope": "strict_forward_smoke_test",
+    "reuses_parent_iter_000": true,
+    "same_mesh": true,
+    "same_material_model": true,
+    "same_sources": true,
+    "same_physical_receivers": true,
+    "same_simulation_time": true,
+    "changed_component": "strict_full_grid sampling region only",
+    "canonical_station_count": 38440,
+    "mini_station_count": 3600,
+    "reduction_factor": 10.677777777777777,
+    "scientific_limit": "This profile validates execution and I/O on a smaller control region. It is not yet the final full-domain inversion gradient profile."
   }
 }

@@ -132,6 +132,432 @@ All runtime roots may be supplied through configuration and
 `FATHI_BENCHMARK_ROOT`. Large generated workspaces and traces are runtime data and
 must not be committed to Git.
 
+## C. Validated Mini End-to-End Transition: `iter_000 -> iter_001`
+
+The repository also provides a compact, fully validated mini transition for demonstrating the complete inversion logic without launching the full 38,440-control-point and 30-adjoint-batch workflow.
+
+This mini workflow is not a different inversion algorithm. It is a reduced execution profile of the same sequence:
+
+```text
+accepted iter_000 model
+  -> predicted-versus-observed receiver residual
+  -> adjoint x / y / z
+  -> forward-adjoint RHS assembly
+  -> Mtilde control solve
+  -> candidate material models
+  -> candidate forward simulations
+  -> receiver-misfit comparison
+  -> accepted iter_001 model
+```
+
+### Mini profile
+
+The validated mini profile uses:
+
+```text
+physical receivers used for residual and misfit = 49
+control stations used for forward/adjoint DUDX = 3,600
+control grid = 15 x 15 x 16
+adjoint executions = 3
+  x: batch_000
+  y: batch_000
+  z: batch_000
+candidate step sizes = 0.05 MPa and 0.10 MPa
+MPI ranks per SEM3D execution = 12
+```
+
+The two main configuration files are:
+
+```text
+configs/fathi_mini_e2e_3600.json
+configs/fathi_mini_strict_15x15x16.json
+```
+
+The mini transition reuses the bootstrap trace datasets:
+
+```text
+observed traces:
+data/bootstrap/fathi_reduced_3x3_12p5/true_layered/traces
+
+parent predicted traces:
+data/bootstrap/fathi_reduced_3x3_12p5/initial_homogeneous/traces
+```
+
+The 49 physical receivers are used to define the receiver residual and objective function. The 3,600 control stations are a separate operator used to store forward and adjoint `DUDX_1 ... DUDX_9` fields for material-gradient assembly.
+
+### Environment
+
+```bash
+cd /path/to/fathi-sem3d-inversion-benchmark
+source /path/to/venv/bin/activate
+
+export FATHI_BENCHMARK_ROOT="$PWD"
+export SEM3D_BIN=/path/to/SEM/build/SEM3D/sem3d.exe
+```
+
+A local MPI runtime must also be available:
+
+```bash
+command -v mpirun
+test -x "$SEM3D_BIN"
+```
+
+### Regression tests
+
+Before running the transition:
+
+```bash
+python -m pytest -q
+```
+
+Validated result:
+
+```text
+40 passed, 4 subtests passed
+```
+
+### Stage 1. Preflight
+
+The preflight checks the accepted parent model, predicted and observed trace directories, strict mini forward data, the 3,600 control stations, the 49 selected physical receivers, the SEM3D executable, and the available Mtilde matrix.
+
+```bash
+python -m scripts.mini_e2e.run_mini_e2e \
+  --stage preflight
+```
+
+Expected marker:
+
+```text
+RESULT = PASS_MINI_E2E_PREFLIGHT
+```
+
+### Stage 2. Receiver residual
+
+```bash
+python -m scripts.mini_e2e.run_mini_e2e \
+  --stage residual
+```
+
+This stage computes:
+
+```text
+residual = parent predicted displacement - observed displacement
+```
+
+It writes a machine-readable HDF5 residual package for 49 physical receivers, including the forward-time residual and time-reversed adjoint source signals.
+
+Validated parent objective:
+
+```text
+parent_J = 9.2275437349432100e-22
+```
+
+Expected marker:
+
+```text
+RESULT = PASS
+```
+
+### Stage 3. Prepare adjoint workspaces
+
+```bash
+python -m scripts.mini_e2e.run_mini_e2e \
+  --stage prepare-adjoint
+```
+
+This creates:
+
+```text
+data/inversion_tv_fathi80_mini3600/iter_001/
+  adjoint_full_grid_batches/
+    x/batch_000
+    y/batch_000
+    z/batch_000
+```
+
+Each workspace contains:
+
+```text
+49 non-zero adjoint source files
+3,600 control stations
+SEM3D mesh link
+material inputs
+input.spec
+```
+
+Expected marker:
+
+```text
+RESULT = PASS_MINI_ADJOINT_PREPARATION
+```
+
+### Stage 4. Run adjoint x, y, and z
+
+These are heavy SEM3D stages.
+
+The mini adapter delegates execution to the repository's existing adjoint runner:
+
+```text
+scripts/fathi_benchmark/run_task2c_adjoint_batch.py
+```
+
+Run all three components:
+
+```bash
+python -m scripts.mini_e2e.run_mini_e2e \
+  --stage adjoint-all \
+  --np 12
+```
+
+Equivalent component-level commands are:
+
+```bash
+python -m scripts.mini_e2e.run_adjoint \
+  --config configs/fathi_mini_e2e_3600.json \
+  --component x \
+  --np 12
+
+python -m scripts.mini_e2e.run_adjoint \
+  --config configs/fathi_mini_e2e_3600.json \
+  --component y \
+  --np 12
+
+python -m scripts.mini_e2e.run_adjoint \
+  --config configs/fathi_mini_e2e_3600.json \
+  --component z \
+  --np 12
+```
+
+Each completed component must satisfy:
+
+```text
+returncode = 0
+fin_sem = 1
+trace files = 6
+unique control positions = 3,600
+DUDX_1 ... DUDX_9 available
+```
+
+Expected marker:
+
+```text
+RESULT = PASS_MINI_ADJOINT_RUNS
+```
+
+### Stage 5. Assemble the material RHS and solve Mtilde
+
+This stage does not launch SEM3D.
+
+```bash
+python -m scripts.mini_e2e.run_mini_e2e \
+  --stage gradient
+```
+
+It performs:
+
+```text
+build forward and adjoint control manifests
+  -> compute RHS_x
+  -> compute RHS_y
+  -> compute RHS_z
+  -> assemble RHS_total
+  -> solve the 3,600 x 3,600 Mtilde subset system
+```
+
+Validated checks:
+
+```text
+forward manifest rows = 3,600
+adjoint x manifest rows = 3,600
+adjoint y manifest rows = 3,600
+adjoint z manifest rows = 3,600
+
+relative Mtilde residual for lambda = 2.9216733343895482e-16
+relative Mtilde residual for mu     = 2.8947877553402663e-16
+```
+
+Expected markers:
+
+```text
+RESULT = PASS_MINI_TRACE_MANIFESTS
+RESULT = PASS_MINI_RHS_COMPONENT
+RESULT = PASS_MINI_RHS_TOTAL
+RESULT = PASS_MINI_MTILDE_SOLVE
+```
+
+### Stage 6. Generate candidate material models
+
+```bash
+python -m scripts.mini_e2e.run_mini_e2e \
+  --stage candidates
+```
+
+The validated candidate names are:
+
+```text
+mini_line_search_pos_mtilde_0p05MPa
+mini_line_search_pos_mtilde_0p10MPa
+```
+
+Under the residual and adjoint sign convention used by this mini implementation, the tested descent direction is the positive normalized Mtilde control direction.
+
+This sign convention is recorded explicitly in the candidate metadata and should not be inferred only from the candidate directory name.
+
+Expected markers:
+
+```text
+RESULT = PASS_MINI_CANDIDATE_GENERATION
+RESULT = PASS_MINI_CANDIDATE_WORKSPACES
+```
+
+### Stage 7. Run candidate forward simulations
+
+This stage launches two heavy SEM3D forward simulations, one for each candidate.
+
+```bash
+python -m scripts.mini_e2e.run_mini_e2e \
+  --stage candidate-forward \
+  --np 12
+```
+
+Each candidate forward uses the same 49 physical receivers as the parent objective.
+
+Expected marker:
+
+```text
+RESULT = PASS_MINI_CANDIDATE_RUNS
+```
+
+### Stage 8. Misfit comparison and acceptance
+
+```bash
+python -m scripts.mini_e2e.run_mini_e2e \
+  --stage accept
+```
+
+Validated result:
+
+```text
+parent_J = 9.2275437349432100e-22
+
+mini_line_search_pos_mtilde_0p05MPa
+  J       = 9.2275429553166404e-22
+  delta_J = -7.7962656954727976e-29
+  descent = True
+
+mini_line_search_pos_mtilde_0p10MPa
+  J       = 9.2275421771626136e-22
+  delta_J = -1.5577805963808890e-28
+  descent = True
+
+best candidate = mini_line_search_pos_mtilde_0p10MPa
+accepted       = True
+```
+
+The acceptance rule remains:
+
+```text
+J_candidate < J_parent
+```
+
+Expected marker:
+
+```text
+RESULT = PASS_ACCEPTED
+```
+
+Do not use `--allow-non-descent` for a formal validated transition.
+
+### Stage 9. Final status
+
+```bash
+python -m scripts.mini_e2e.run_mini_e2e \
+  --stage status
+```
+
+The accepted output is written under:
+
+```text
+data/inversion_tv_fathi80_mini3600/iter_001/accepted
+```
+
+The corrected accepted state is written to:
+
+```text
+results/fathi_loop_tv_fathi80_mini3600/
+  states_corrected/
+  iter_001_state_v2_corrected.npz
+```
+
+The final machine-readable status can be saved with:
+
+```bash
+python -m scripts.mini_e2e.run_mini_e2e \
+  --stage status \
+  > reports/mini_iter000_to_iter001_final_status.txt
+```
+
+Final validated marker:
+
+```text
+RESULT = COMPLETE_MINI_ITER000_TO_ITER001
+```
+
+### Compact execution summary
+
+After the required bootstrap and strict mini forward prerequisites exist, the transition can be executed stage by stage with:
+
+```bash
+python -m scripts.mini_e2e.run_mini_e2e --stage preflight
+python -m scripts.mini_e2e.run_mini_e2e --stage residual
+python -m scripts.mini_e2e.run_mini_e2e --stage prepare-adjoint
+python -m scripts.mini_e2e.run_mini_e2e --stage adjoint-all --np 12
+python -m scripts.mini_e2e.run_mini_e2e --stage gradient
+python -m scripts.mini_e2e.run_mini_e2e --stage candidates
+python -m scripts.mini_e2e.run_mini_e2e --stage candidate-forward --np 12
+python -m scripts.mini_e2e.run_mini_e2e --stage accept
+python -m scripts.mini_e2e.run_mini_e2e --stage status
+```
+
+### Heavy and non-heavy stages
+
+```text
+No SEM3D:
+  preflight
+  residual
+  prepare-adjoint
+  gradient
+  candidates
+  accept
+  status
+
+SEM3D:
+  adjoint-x
+  adjoint-y
+  adjoint-z
+  candidate forward: 0.05 MPa
+  candidate forward: 0.10 MPa
+```
+
+The strict mini forward that supplies the 3,600 forward-control traces is also a heavy SEM3D prerequisite.
+
+### Runtime data policy
+
+Do not commit generated runtime data such as:
+
+```text
+data/inversion_tv_fathi80_mini3600/
+results/fathi_loop_tv_fathi80_mini3600/
+_quarantine/
+traces/
+prot/
+res/
+mirror/
+large HDF5 and NPZ runtime outputs
+```
+
+Commit only the reproducible code, configuration, tests, small status summaries, and documentation required to recreate and audit the workflow.
+
 ## 1. Project Overview
 
 This repository contains a reusable benchmark workflow for SEM3D-based elastic parameter inversion.
@@ -991,4 +1417,27 @@ See:
 
 Large SEM3D traces, snapshots and inversion workspaces are local
 runtime data and are not stored in Git.
+
+### Reusable iteration handoff
+
+The mini implementation is iteration-generic. `parent_iteration` and
+`next_iteration` in the JSON configuration determine the transition paths,
+accepted workspace and state filename.
+
+The accepted `iter_001` model can start the next strict-DUDX forward with:
+
+```bash
+python -m scripts.mini_e2e.run_mini_e2e \
+  --config configs/fathi_mini_e2e_iter001_to_iter002.json \
+  --stage next-forward \
+  --np 12
+```
+
+Expected marker:
+
+```text
+RESULT = PASS_MINI_ITER001_TO_ITER002_FORWARD_HANDOFF
+```
+
+See `docs/MINI_ITERATION_HANDOFF.md`.
 

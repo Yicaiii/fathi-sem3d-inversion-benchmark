@@ -1,0 +1,17 @@
+
+====================================================================================================
+/home/crellamaybe/sem3d_fathi_clean/.venv/bin/python -m scripts.mini_e2e.next_forward --config configs/fathi_mini_e2e_iter001_to_iter002.json --status-only
+====================================================================================================
+
+MINI ITERATION FORWARD HANDOFF
+==============================
+transition = iter_001 -> iter_002
+workspace = /mnt/c/Users/crellamaybe/Documents/GitHub/fathi-benchmark-refactor/data/inversion_tv_fathi80_mini3600/iter_002/forward_dudx_mgcap_full_batches/strict_mini_15x15x16_forward_000
+fin_sem = 1
+trace_file_count = 6
+control_position_count = 3600
+expected_control_position_count = 3600
+dudx_1_to_9 = True
+complete = True
+result = PASS
+RESULT = PASS_MINI_ITER001_TO_ITER002_FORWARD_HANDOFF
