@@ -1418,3 +1418,26 @@ See:
 Large SEM3D traces, snapshots and inversion workspaces are local
 runtime data and are not stored in Git.
 
+### Reusable iteration handoff
+
+The mini implementation is iteration-generic. `parent_iteration` and
+`next_iteration` in the JSON configuration determine the transition paths,
+accepted workspace and state filename.
+
+The accepted `iter_001` model can start the next strict-DUDX forward with:
+
+```bash
+python -m scripts.mini_e2e.run_mini_e2e \
+  --config configs/fathi_mini_e2e_iter001_to_iter002.json \
+  --stage next-forward \
+  --np 12
+```
+
+Expected marker:
+
+```text
+RESULT = PASS_MINI_ITER001_TO_ITER002_FORWARD_HANDOFF
+```
+
+See `docs/MINI_ITERATION_HANDOFF.md`.
+

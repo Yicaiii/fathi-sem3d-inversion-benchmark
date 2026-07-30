@@ -1,24 +1,23 @@
 {
   "schema_version": 1,
-  "name": "fathi_mini_e2e_3600",
-  "role": "mini_end_to_end_data_gradient_smoke_benchmark",
+  "name": "fathi_mini_e2e_iter001_to_iter002_3600",
+  "role": "mini_iteration_generic_forward_handoff",
   "scientific_scope": {
-    "description": "One complete iter_000 to iter_001 transition using the existing reduced Fathi domain, a central 49-receiver observation subset, a 3600-point control region, one adjoint workspace per displacement component, and two line-search candidates.",
+    "description": "Reusable mini iteration context using accepted iter_001 as the parent of iter_001 to iter_002. The immediate target is the next strict 3600-control-point DUDX forward.",
     "limitations": [
       "The physical SEM3D domain and 9-source operator are unchanged.",
       "The observation set is reduced from 225 to 49 central surface receivers.",
       "The gradient/control region is reduced from 38440 to 3600 nodes.",
-      "This mini workflow validates the core data-gradient inversion loop without the optional TV term."
+      "This mini workflow validates the core data-gradient inversion loop without the optional TV term.",
+      "This configuration validates the forward handoff first; it does not claim a complete iter_001 to iter_002 inversion until the remaining stages and acceptance are run."
     ]
   },
-  "parent_accepted_dir": "data/inversion_tv_fathi80/iter_000/accepted",
-  "parent_state": "results/fathi_loop_tv_fathi80/states_corrected/iter_000_state_v2_corrected.npz",
+  "parent_accepted_dir": "data/inversion_tv_fathi80_mini3600/iter_001/accepted",
+  "parent_state": "results/fathi_loop_tv_fathi80_mini3600/states_corrected/iter_001_state_v2_corrected.npz",
   "parent_predicted_trace_candidates": [
-    "data/bootstrap/fathi_reduced_3x3_12p5/initial_homogeneous/traces",
-    "data/bootstrap/fathi_reduced_3x3_12p5/initial_iter_000/traces",
-    "data/inversion_tv_fathi80/iter_000/accepted/traces"
+    "data/inversion_tv_fathi80_mini3600/iter_001/accepted/traces"
   ],
-  "strict_forward_workspace": "data/inversion_tv_fathi80/iter_001/forward_dudx_mgcap_full_batches/strict_mini_15x15x16_forward_000",
+  "strict_forward_workspace": "data/inversion_tv_fathi80_mini3600/iter_002/forward_dudx_mgcap_full_batches/strict_mini_15x15x16_forward_000",
   "benchmark_profile": "configs/fathi_mini_strict_15x15x16.json",
   "true_observed_trace_candidates": [
     "data/bootstrap/fathi_reduced_3x3_12p5/true_layered/traces",
@@ -28,7 +27,7 @@
   ],
   "output_data_root": "data/inversion_tv_fathi80_mini3600",
   "output_result_root": "results/fathi_loop_tv_fathi80_mini3600",
-  "transition": "iter_000_to_iter_001",
+  "transition": "iter_001_to_iter_002",
   "observation_subset": {
     "x_min_m": -7.5,
     "x_max_m": 7.5,
@@ -81,8 +80,9 @@
     "/home/crellamaybe/SEM/build/SEM3D/sem3d.exe",
     "/home/crellamaybe/sem3d_fathi_clean/SEM/build/SEM3D/sem3d.exe"
   ],
-  "parent_iteration": 0,
-  "next_iteration": 1,
-  "accepted_marker_name": "MINI_ITER001_ACCEPTANCE.json",
-  "state_filename": "iter_001_state_v2_corrected.npz"
+  "parent_iteration": 1,
+  "next_iteration": 2,
+  "accepted_marker_name": "MINI_ITER002_ACCEPTANCE.json",
+  "state_filename": "iter_002_state_v2_corrected.npz",
+  "strict_forward_template_workspace": "data/inversion_tv_fathi80/iter_001/forward_dudx_mgcap_full_batches/strict_mini_15x15x16_forward_000"
 }

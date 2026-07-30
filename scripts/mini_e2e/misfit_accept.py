@@ -105,7 +105,7 @@ def main() -> None:
         states = sorted(candidate_dir.glob("*_state_candidate.npz"))
         require(len(states) == 1, f"Candidate state missing: {candidate_dir}")
         paths["state_dir"].mkdir(parents=True, exist_ok=True)
-        state_out = paths["state_dir"] / "iter_001_state_v2_corrected.npz"
+        state_out = paths["state_file"]
         if state_out.exists() and not args.force:
             raise RuntimeError(f"State output exists: {state_out}; use --force to replace")
         shutil.copy2(states[0], state_out)
@@ -121,7 +121,7 @@ def main() -> None:
             "state": str(state_out),
             "result": "PASS",
         }
-        write_json(accepted / "MINI_ITER001_ACCEPTANCE.json", marker)
+        write_json(paths["accepted_marker"], marker)
         summary["accepted_dir"] = str(accepted)
         summary["state_out"] = str(state_out)
 

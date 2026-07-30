@@ -18,6 +18,9 @@ STAGES = [
     "candidate-forward",
     "accept",
     "status",
+    "next-forward-prepare",
+    "next-forward",
+    "next-forward-status",
     "all",
 ]
 
@@ -76,6 +79,29 @@ def main() -> None:
             )
         ],
         "status": [command("scripts.mini_e2e.status", args.config)],
+        "next-forward-prepare": [
+            command(
+                "scripts.mini_e2e.next_forward",
+                args.config,
+                "--prepare-only",
+                *force,
+            )
+        ],
+        "next-forward": [
+            command(
+                "scripts.mini_e2e.next_forward",
+                args.config,
+                *np_args,
+                *force,
+            )
+        ],
+        "next-forward-status": [
+            command(
+                "scripts.mini_e2e.next_forward",
+                args.config,
+                "--status-only",
+            )
+        ],
     }
     if args.stage == "all":
         sequence = ["preflight", "residual", "prepare-adjoint", "adjoint-all", "gradient", "candidates", "candidate-forward", "accept", "status"]

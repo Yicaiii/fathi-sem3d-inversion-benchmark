@@ -32,8 +32,10 @@ def load_config(path: str | Path) -> tuple[Path, dict[str, Any], Path]:
     root = repository_root()
     cfg_path = resolve(root, path)
     data = json.loads(cfg_path.read_text(encoding="utf-8"))
-    if data.get("name") != "fathi_mini_e2e_3600":
+    name = str(data.get("name", ""))
+    if not name.startswith("fathi_mini_e2e"):
         raise ValueError(f"Unexpected mini config: {cfg_path}")
+    iteration_context(data)
     return root, data, cfg_path
 
 
@@ -116,7 +118,7 @@ def discover_parent_trace_dir(root: Path, cfg: dict[str, Any]) -> Path:
         if len(parent_map) >= expected:
             return candidate
     raise RuntimeError(
-        "No compatible iter_000 predicted trace directory found. Checked: "
+        "No compatible parent predicted trace directory found. Checked: "
         + ", ".join(checked)
     )
 
@@ -154,24 +156,77 @@ def find_sem3d(root: Path, cfg: dict[str, Any]) -> Path:
     raise RuntimeError("sem3d.exe not found; set SEM3D_BIN=/absolute/path/to/sem3d.exe")
 
 
+def iteration_context(cfg: dict[str, Any]) -> dict[str, Any]:
+    parent_iteration = int(cfg.get("parent_iteration", 0))
+    next_iteration = int(cfg.get("next_iteration", parent_iteration + 1))
+    require(parent_iteration >= 0, "parent_iteration must be non-negative")
+    require(
+        next_iteration == parent_iteration + 1,
+        "next_iteration must equal parent_iteration + 1",
+    )
+    parent_tag = f"iter_{parent_iteration:03d}"
+    next_tag = f"iter_{next_iteration:03d}"
+    transition = str(
+        cfg.get("transition", f"{parent_tag}_to_{next_tag}")
+    )
+    return {
+        "parent_iteration": parent_iteration,
+        "next_iteration": next_iteration,
+        "parent_tag": parent_tag,
+        "next_tag": next_tag,
+        "transition": transition,
+        "accepted_marker_name": str(
+            cfg.get(
+                "accepted_marker_name",
+                f"MINI_ITER{next_iteration:03d}_ACCEPTANCE.json",
+            )
+        ),
+        "state_filename": str(
+            cfg.get(
+                "state_filename",
+                f"{next_tag}_state_v2_corrected.npz",
+            )
+        ),
+        "complete_marker": (
+            f"COMPLETE_MINI_ITER{parent_iteration:03d}"
+            f"_TO_ITER{next_iteration:03d}"
+        ),
+        "forward_preparation_marker": (
+            f"PASS_MINI_ITER{parent_iteration:03d}"
+            f"_TO_ITER{next_iteration:03d}_FORWARD_PREPARATION"
+        ),
+        "forward_handoff_marker": (
+            f"PASS_MINI_ITER{parent_iteration:03d}"
+            f"_TO_ITER{next_iteration:03d}_FORWARD_HANDOFF"
+        ),
+    }
+
+
 def output_paths(root: Path, cfg: dict[str, Any]) -> dict[str, Path]:
+    context = iteration_context(cfg)
     data_root = resolve(root, cfg["output_data_root"])
     result_root = resolve(root, cfg["output_result_root"])
-    transition_root = result_root / cfg["transition"]
+    transition_root = result_root / context["transition"]
+    next_iter_root = data_root / context["next_tag"]
+    state_dir = result_root / "states_corrected"
+    accepted_dir = next_iter_root / "accepted"
     return {
         "data_root": data_root,
         "result_root": result_root,
         "transition_root": transition_root,
+        "next_iter_root": next_iter_root,
         "residual_dir": transition_root / "residual_sources",
-        "adjoint_root": data_root / "iter_001" / "adjoint_full_grid_batches",
+        "adjoint_root": next_iter_root / "adjoint_full_grid_batches",
         "manifest_dir": transition_root / "rhs_manifests",
         "component_rhs_dir": transition_root / "component_rhs",
         "mtilde_dir": transition_root / "mtilde_solve",
         "candidate_dir": transition_root / "candidates",
-        "candidate_ws_root": data_root / "iter_001" / "candidate_forward_workspaces",
+        "candidate_ws_root": next_iter_root / "candidate_forward_workspaces",
         "misfit_dir": transition_root / "candidate_misfits",
-        "accepted_dir": data_root / "iter_001" / "accepted",
-        "state_dir": result_root / "states_corrected",
+        "accepted_dir": accepted_dir,
+        "accepted_marker": accepted_dir / context["accepted_marker_name"],
+        "state_dir": state_dir,
+        "state_file": state_dir / context["state_filename"],
         "report_dir": transition_root / "reports",
     }
 
