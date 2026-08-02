@@ -1,14 +1,14 @@
 {
-  "benchmark_name": "Fathi reduced-control full-domain inversion benchmark - 4500 controls, 0.45 s",
+  "benchmark_name": "Fathi reduced-control full-domain benchmark - 4500 controls, 0.10 s",
   "benchmark_role": "reduced_control_full_domain_runtime_profile",
   "benchmark_root": "/home/crellamaybe/fathi-sem3d-inversion-benchmark",
-  "true_observed_traces_dir": "data/50_true_layered_3x3source/traces",
+  "true_observed_traces_dir": "data/50_true_layered_3x3source_0p10s/traces",
   "true_material_dir": "data/50_true_layered_3x3source/mat/h5",
   "sem3d_exe": "/home/crellamaybe/SEM/build/SEM3D/sem3d.exe",
   "mpi_cores": 12,
-  "state_dir": "results/fathi_loop_reduced_4500_0p45s/states_corrected",
-  "run_data_root": "data/inversion_tv_fathi80_reduced_4500_0p45s",
-  "run_result_root": "results/fathi_loop_reduced_4500_0p45s",
+  "state_dir": "results/fathi_loop_reduced_4500_0p10s/states_corrected",
+  "run_data_root": "data/inversion_tv_fathi80_reduced_4500_0p10s",
+  "run_result_root": "results/fathi_loop_reduced_4500_0p10s",
   "material_shape": [
     41,
     33,
@@ -213,9 +213,9 @@
   "benchmark_profile_config": "configs/fathi_reduced_control_4500_0p45.json",
   "parent_state_path": "results/fathi_loop_tv_fathi80/states_corrected/iter_000_state_v2_corrected.npz",
   "parent_accepted_dir": "data/inversion_tv_fathi80/iter_000/accepted",
-  "strict_forward_workspace_name": "strict_reduced_4500_0p45s_forward_000",
-  "adjoint_batches_dir_name": "adjoint_reduced_4500_0p45s_batches",
-  "simulation_time_s": 0.45,
+  "strict_forward_workspace_name": "strict_reduced_4500_0p10s_forward_000",
+  "adjoint_batches_dir_name": "adjoint_reduced_4500_0p10s_batches",
+  "simulation_time_s": 0.1,
   "reduced_profile": {
     "enabled": true,
     "control_shape_zyx": [
@@ -224,7 +224,7 @@
       15
     ],
     "control_count": 4500,
-    "simulation_time_s": 0.45,
+    "simulation_time_s": 0.1,
     "propagation_mesh_unchanged": true,
     "source_count": 9,
     "physical_receiver_count": 225,
@@ -233,5 +233,14 @@
   },
   "mtilde_full_matrix_path": "results/audit_teacher_feedback/iter005_mass_matrix/Mtilde_q1_consistent_sparse.npz",
   "mtilde_matrix_indices_path": "results/reduced_profile_4500_0p45s/Mtilde_q1_reduced_4500_indices.npy",
-  "mtilde_matrix_coords_path": "results/reduced_profile_4500_0p45s/Mtilde_q1_reduced_4500_coords.npy"
+  "mtilde_matrix_coords_path": "results/reduced_profile_4500_0p45s/Mtilde_q1_reduced_4500_coords.npy",
+  "adjoint_template_roots": {
+    "x": "inversion_linear/iter_005/adjoint_x_mgcap_full_batches",
+    "y": "inversion_linear/iter_005/adjoint_y_mgcap_full_batches",
+    "z": "inversion_linear/iter_005/adjoint_z_mgcap_full_batches"
+  },
+  "repository_origin_url": "git@github.com:Yicaiii/fathi-sem3d-inversion-benchmark.git",
+  "repository_root_strategy": "git rev-parse --show-toplevel",
+  "data_root_env": "FATHI_DATA_ROOT",
+  "data_root_default": "data"
 }

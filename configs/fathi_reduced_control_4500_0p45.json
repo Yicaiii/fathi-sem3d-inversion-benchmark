@@ -293,7 +293,7 @@
     ],
     "source_time_function_file": "gaussian_stf.txt",
     "source_operator_invariant": "True observed, initial, parent and candidate forward workspaces must use identical sources, receivers, time function and simulation settings.",
-    "simulation_time_s": 0.45,
+    "simulation_time_s": 0.1,
     "dimension": 3,
     "ngll": 5,
     "time_scheme": {
@@ -410,6 +410,6 @@
       "absence of runtime traces, logs and result folders before execution"
     ]
   },
-  "profile_name": "fathi_reduced_control_4500_full_domain_0p45s",
+  "profile_name": "fathi_reduced_control_4500_full_domain_0p10s",
   "profile_role": "full propagation domain with reduced inversion controls"
 }

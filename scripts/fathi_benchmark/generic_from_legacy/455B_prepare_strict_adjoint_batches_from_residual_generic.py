@@ -1,3 +1,6 @@
+import subprocess
+import os
+from pathlib import Path
 import argparse
 import json
 import sys
@@ -36,10 +39,70 @@ if not residual_h5.exists():
 if not format_json.exists():
     raise RuntimeError(f"Missing 455A format json. Run 455A first: {format_json}")
 
+template_root_values = ctx.get("adjoint_template_roots")
+
+if not isinstance(template_root_values, dict):
+    raise RuntimeError(
+        "Missing adjoint_template_roots in context"
+    )
+
+missing_template_components = [
+    component
+    for component in ("x", "y", "z")
+    if component not in template_root_values
+]
+
+if missing_template_components:
+    raise RuntimeError(
+        "Missing adjoint template components: "
+        + ", ".join(missing_template_components)
+    )
+
+def _repository_root():
+    return Path(
+        subprocess.check_output(
+            [
+                "git",
+                "rev-parse",
+                "--show-toplevel",
+            ],
+            text=True,
+        ).strip()
+    ).resolve()
+
+def _data_root():
+    env_name = ctx.get("data_root_env", "FATHI_DATA_ROOT")
+    default_value = ctx.get("data_root_default", "data")
+    value = os.environ.get(
+        env_name,
+        default_value,
+    )
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        path = _repository_root() / path
+    return path.resolve()
+
+template_root_values = ctx.get("adjoint_template_roots")
+
+if not isinstance(template_root_values, dict):
+    raise RuntimeError(
+        "Missing adjoint_template_roots in context"
+    )
+
+data_root = _data_root()
+
 old_roots = {
-    "x": ROOT / "data/inversion_linear/iter_005/adjoint_x_mgcap_full_batches",
-    "y": ROOT / "data/inversion_linear/iter_005/adjoint_y_mgcap_full_batches",
-    "z": ROOT / "data/inversion_linear/iter_005/adjoint_z_mgcap_full_batches",
+    component: (
+        Path(template_root_values[component])
+        if Path(
+            template_root_values[component]
+        ).is_absolute()
+        else data_root
+        / Path(
+            template_root_values[component]
+        )
+    ).expanduser().resolve()
+    for component in ("x", "y", "z")
 }
 
 iter_root = resolve_path(
