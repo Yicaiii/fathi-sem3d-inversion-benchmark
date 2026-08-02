@@ -1510,3 +1510,30 @@ scripts/fathi_benchmark/iteration_pipeline.py
 ```
 
 `run_iteration_full_context.py` no longer contains a second implementation.
+
+## Mtilde artifact acquisition
+
+Mtilde is generated, registered, extracted, validated, and attached to an
+iteration context through one command:
+
+```bash
+python -m scripts.mtilde.ensure_mtilde   --config <benchmark-config.json>   --context <iteration-context.json>   --execute
+```
+
+The manager prefers an existing validated full matrix when configured. If the
+full matrix is absent, it deterministically generates the structured Q1
+consistent mass matrix from `mtilde_artifact.full_grid`. It then maps the
+current forward control stations to full-grid indices and writes the active
+principal submatrix bundle:
+
+```text
+artifacts/mtilde/<artifact-id>/
+├── Mtilde.npz
+├── coords.npy
+├── active_indices.npy
+└── manifest.json
+```
+
+The matrix, coordinates, indices, hashes, ordering contract, and parent
+artifact are recorded in the manifest. The active artifact paths are written
+to both the iteration context and the benchmark configuration.
