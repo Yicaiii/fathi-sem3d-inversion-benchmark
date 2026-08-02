@@ -1,0 +1,7 @@
+scripts/fathi_benchmark/patch_root_portability.py
+scripts/fathi_benchmark/repair_residual_summary_from_h5.py
+scripts/fathi_benchmark/update_config_after_iter008.py
+scripts/fathi_benchmark/write_F3_adjoint_batch_generic_status.py
+scripts/fathi_benchmark/write_F4_strict_forward_generic_status.py
+scripts/fathi_benchmark/write_F5_prepare_strict_forward_generic_status.py
+scripts/fathi_benchmark/write_G_local_iteration_success_status.py
