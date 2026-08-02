@@ -6,7 +6,10 @@ import subprocess
 import sys
 import re
 
-from runtime_paths import repository_root, sem3d_executable
+try:
+    from scripts.fathi_benchmark.runtime_paths import repository_root, sem3d_executable
+except ModuleNotFoundError:
+    from runtime_paths import repository_root, sem3d_executable
 
 ROOT = repository_root()
 
