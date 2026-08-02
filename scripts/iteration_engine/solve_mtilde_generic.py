@@ -89,6 +89,31 @@ matrix_path = resolve_path(
     ),
     base=ROOT,
 )
+matrix_indices_value = config.get(
+    "mtilde_matrix_indices_path"
+)
+matrix_coords_value = config.get(
+    "mtilde_matrix_coords_path"
+)
+matrix_indices_path = (
+    resolve_path(
+        matrix_indices_value,
+        base=ROOT,
+    )
+    if matrix_indices_value
+    else None
+)
+matrix_coords_path = (
+    resolve_path(
+        matrix_coords_value,
+        base=ROOT,
+    )
+    if matrix_coords_value
+    else None
+)
+expected_n = int(
+    config.get("interior_gradient_size", 38440)
+)
 
 mtilde_solve_dir.mkdir(
     parents=True,
@@ -119,6 +144,14 @@ required_inputs = [
     ),
     matrix_path,
 ]
+if matrix_indices_path is not None:
+    required_inputs.append(
+        matrix_indices_path
+    )
+if matrix_coords_path is not None:
+    required_inputs.append(
+        matrix_coords_path
+    )
 
 missing = [
     path
@@ -246,6 +279,16 @@ else:
             "--out-dir",
             str(mtilde_solve_dir),
         ]
+        if matrix_indices_path is not None:
+            cmd.extend([
+                "--matrix-indices",
+                str(matrix_indices_path),
+            ])
+        if matrix_coords_path is not None:
+            cmd.extend([
+                "--matrix-coords",
+                str(matrix_coords_path),
+            ])
 
         record["command"] = cmd
 
@@ -313,21 +356,21 @@ else:
                     mtilde_solve_dir
                     / (
                         "Mtilde_q1_consistent_"
-                        "interior_38440_sparse.npz"
+                        f"interior_{expected_n}_sparse.npz"
                     )
                 ),
                 (
                     mtilde_solve_dir
                     / (
                         "Mtilde_q1_consistent_"
-                        "interior_38440_indices.npy"
+                        f"interior_{expected_n}_indices.npy"
                     )
                 ),
                 (
                     mtilde_solve_dir
                     / (
                         "Mtilde_q1_consistent_"
-                        "interior_38440_coords.npy"
+                        f"interior_{expected_n}_coords.npy"
                     )
                 ),
                 (

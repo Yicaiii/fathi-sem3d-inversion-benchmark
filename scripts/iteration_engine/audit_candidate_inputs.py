@@ -28,12 +28,23 @@ k = args.iter_k
 kp1 = k + 1
 transition = f"iter_{k:03d}_to_iter_{kp1:03d}"
 
+state_value = config.get("parent_state_path")
 state_in = (
     resolve_path(
-        config["state_dir"],
+        state_value,
         base=ROOT,
     )
-    / f"iter_{k:03d}_state_v2_corrected.npz"
+    if state_value
+    else (
+        resolve_path(
+            config["state_dir"],
+            base=ROOT,
+        )
+        / f"iter_{k:03d}_state_v2_corrected.npz"
+    )
+)
+expected_n = int(
+    config.get("interior_gradient_size", 38440)
 )
 
 run_result_root = (
@@ -46,13 +57,23 @@ run_result_root = (
 
 mtilde_dir = run_result_root / "mtilde_solve"
 
+parent_accepted_value = config.get(
+    "parent_accepted_dir"
+)
 parent_accepted = (
     resolve_path(
-        config["run_data_root"],
+        parent_accepted_value,
         base=ROOT,
     )
-    / f"iter_{k:03d}"
-    / "accepted"
+    if parent_accepted_value
+    else (
+        resolve_path(
+            config["run_data_root"],
+            base=ROOT,
+        )
+        / f"iter_{k:03d}"
+        / "accepted"
+    )
 )
 
 paths = {
@@ -60,7 +81,11 @@ paths = {
     "g_lambda": mtilde_dir / "g_lambda_mtilde_q1_interior_solve_rhs_total.npy",
     "g_mu": mtilde_dir / "g_mu_mtilde_q1_interior_solve_rhs_total.npy",
     "g_coords": mtilde_dir / "g_mtilde_q1_interior_solve_rhs_total_coords.npy",
-    "indices": mtilde_dir / "Mtilde_q1_consistent_interior_38440_indices.npy",
+    "indices": mtilde_dir
+    / (
+        "Mtilde_q1_consistent_"
+        f"interior_{expected_n}_indices.npy"
+    ),
     "parent_kappa_h5": parent_accepted / "mat/h5/Mat_0_Kappa.h5",
     "parent_mu_h5": parent_accepted / "mat/h5/Mat_0_Mu.h5",
     "parent_density_h5": parent_accepted / "mat/h5/Mat_0_Density.h5",
@@ -170,11 +195,11 @@ else:
             lines.append(f"    {d['name']} shape={d['shape']} dtype={d['dtype']}")
 
     ok = (
-        gL.shape == (38440,)
-        and gM.shape == (38440,)
-        and gC.shape == (38440, 3)
-        and idx.shape == (38440,)
-        and np.unique(idx).size == 38440
+        gL.shape == (expected_n,)
+        and gM.shape == (expected_n,)
+        and gC.shape == (expected_n, 3)
+        and idx.shape == (expected_n,)
+        and np.unique(idx).size == expected_n
         and np.all(np.isfinite(gL))
         and np.all(np.isfinite(gM))
     )

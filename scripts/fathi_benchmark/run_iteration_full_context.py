@@ -103,6 +103,9 @@ out_json = report_dir / f"{transition}_run_iteration_full_context_{args.stage}.j
 out_txt = report_dir / f"{transition}_run_iteration_full_context_{args.stage}.txt"
 
 ctx_rel = str(ctx_path)
+config_path_for_children = str(
+    Path(ctx["config_path"]).resolve()
+)
 
 def cmd_prepare_strict_forward(execute=True):
     cmd = [sys.executable, "scripts/fathi_benchmark/run_task1b_prepare_strict_forward.py", "--context", ctx_rel]
@@ -162,6 +165,7 @@ def cmd_gradient():
         "scripts/fathi_benchmark/run_task3_gradient.py",
         "--iter-k", str(iter_k),
         "--stage", "all",
+        "--config", config_path_for_children,
         "--execute",
     ]
 
@@ -171,6 +175,7 @@ def cmd_candidates():
         "scripts/fathi_benchmark/run_task4_candidates.py",
         "--iter-k", str(iter_k),
         "--stage", "all",
+        "--config", config_path_for_children,
         "--execute",
     ]
 
@@ -182,6 +187,7 @@ def cmd_task5():
         "--candidate", args.candidate,
         "--stage", "all",
         "--np", str(np_count),
+        "--config", config_path_for_children,
         "--execute",
     ]
 

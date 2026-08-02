@@ -4,215 +4,541 @@ import numpy as np
 from scipy.sparse import load_npz, save_npz
 from scipy.sparse.linalg import spsolve
 
-from scripts.fathi_benchmark.runtime_paths import repository_root, resolve_path
+from scripts.fathi_benchmark.runtime_paths import (
+    repository_root,
+    resolve_path,
+)
 
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--matrix",
-    default=(
-        "results/audit_teacher_feedback/"
-        "iter005_mass_matrix/"
-        "Mtilde_q1_consistent_sparse.npz"
-    ),
+    required=True,
+)
+parser.add_argument(
+    "--matrix-indices",
+)
+parser.add_argument(
+    "--matrix-coords",
 )
 parser.add_argument(
     "--rhs-dir",
-    default=(
-        "results/longterm_capteurs_material_grid/"
-        "component_rhs"
-    ),
+    required=True,
 )
 parser.add_argument(
     "--out-dir",
-    default=(
-        "results/longterm_capteurs_material_grid/"
-        "mtilde_solve_full_grid"
-    ),
+    required=True,
 )
 args = parser.parse_args()
 
 ROOT = repository_root()
 
-M_PATH = resolve_path(
+matrix_path = resolve_path(
     args.matrix,
     base=ROOT,
 )
-RHS_DIR = resolve_path(
+
+matrix_indices_path = (
+    resolve_path(
+        args.matrix_indices,
+        base=ROOT,
+    )
+    if args.matrix_indices
+    else None
+)
+
+matrix_coords_path = (
+    resolve_path(
+        args.matrix_coords,
+        base=ROOT,
+    )
+    if args.matrix_coords
+    else None
+)
+
+rhs_dir = resolve_path(
     args.rhs_dir,
     base=ROOT,
 )
-OUT = resolve_path(
+
+out_dir = resolve_path(
     args.out_dir,
     base=ROOT,
 )
-OUT.mkdir(parents=True, exist_ok=True)
 
-M = load_npz(M_PATH).tocsr()
+out_dir.mkdir(
+    parents=True,
+    exist_ok=True,
+)
 
-rhs_lam = np.load(RHS_DIR / "full_grid_trace_RHS_total_lambda.npy")
-rhs_mu = np.load(RHS_DIR / "full_grid_trace_RHS_total_mu.npy")
-rhs_coords = np.load(RHS_DIR / "full_grid_trace_RHS_total_coords.npy")
+matrix = load_npz(
+    matrix_path
+).tocsr()
 
-if M.shape != (44649, 44649):
-    raise RuntimeError(f"Unexpected Mtilde shape: {M.shape}")
+rhs_lambda = np.load(
+    rhs_dir
+    / "full_grid_trace_RHS_total_lambda.npy"
+)
 
-if rhs_lam.shape != (38440,) or rhs_mu.shape != (38440,) or rhs_coords.shape != (38440, 3):
+rhs_mu = np.load(
+    rhs_dir
+    / "full_grid_trace_RHS_total_mu.npy"
+)
+
+rhs_coords = np.load(
+    rhs_dir
+    / "full_grid_trace_RHS_total_coords.npy"
+)
+
+if rhs_lambda.ndim != 1:
     raise RuntimeError(
-        f"Unexpected RHS shapes: lambda={rhs_lam.shape}, mu={rhs_mu.shape}, coords={rhs_coords.shape}"
+        "Lambda RHS must be one-dimensional: "
+        f"{rhs_lambda.shape}"
     )
 
-# IMPORTANT:
-# This follows scripts/audit/302_build_q1_consistent_mtilde.py exactly:
-#   shape = nz, ny, nx
-#   x = linspace(-20, 20, nx)
-#   y = linspace(-20, 20, ny)
-#   z = linspace(0, -50, nz)
-#   M3 = kron(Mz, kron(My, Mx))
-#   flattening convention: field[iz, iy, ix], x fastest in C-order
+expected_n = int(rhs_lambda.size)
+
+if rhs_mu.shape != (expected_n,):
+    raise RuntimeError(
+        "Unexpected mu RHS shape: "
+        f"{rhs_mu.shape}"
+    )
+
+if rhs_coords.shape != (expected_n, 3):
+    raise RuntimeError(
+        "Unexpected RHS coordinate shape: "
+        f"{rhs_coords.shape}"
+    )
+
+if not np.all(np.isfinite(rhs_lambda)):
+    raise RuntimeError(
+        "Lambda RHS contains non-finite values"
+    )
+
+if not np.all(np.isfinite(rhs_mu)):
+    raise RuntimeError(
+        "Mu RHS contains non-finite values"
+    )
+
+if not np.all(np.isfinite(rhs_coords)):
+    raise RuntimeError(
+        "RHS coordinates contain non-finite values"
+    )
+
 nx, ny, nz = 33, 33, 41
-x = np.linspace(-20.0, 20.0, nx)
-y = np.linspace(-20.0, 20.0, ny)
-z = np.linspace(0.0, -50.0, nz)
 
-def key(p):
-    return tuple(round(float(v), 8) for v in p)
+x_values = np.linspace(
+    -20.0,
+    20.0,
+    nx,
+)
 
-full_coords = []
-for iz in range(nz):
-    for iy in range(ny):
-        for ix in range(nx):
-            full_coords.append((x[ix], y[iy], z[iz]))
-full_coords = np.asarray(full_coords, dtype=np.float64)
+y_values = np.linspace(
+    -20.0,
+    20.0,
+    ny,
+)
 
-if full_coords.shape != (44649, 3):
-    raise RuntimeError(f"full_coords shape mismatch: {full_coords.shape}")
+z_values = np.linspace(
+    0.0,
+    -50.0,
+    nz,
+)
 
-full_map = {key(p): i for i, p in enumerate(full_coords)}
+full_coords = np.asarray(
+    [
+        (x, y, z)
+        for z in z_values
+        for y in y_values
+        for x in x_values
+    ],
+    dtype=np.float64,
+)
 
-idx = []
-missing = []
-for p in rhs_coords:
-    k = key(p)
-    j = full_map.get(k)
-    if j is None:
-        missing.append(k)
-    else:
-        idx.append(j)
+
+def key(point):
+    return tuple(
+        round(float(value), 8)
+        for value in point
+    )
+
+
+full_map = {
+    key(point): index
+    for index, point in enumerate(full_coords)
+}
+
+missing = [
+    key(point)
+    for point in rhs_coords
+    if key(point) not in full_map
+]
 
 if missing:
-    print("First missing coordinates:")
-    for m in missing[:20]:
-        print("  ", m)
-    raise RuntimeError(f"Missing RHS coordinates in full Mtilde grid: {len(missing)}")
+    raise RuntimeError(
+        "RHS coordinates are missing from the "
+        "full Mtilde grid. First missing: "
+        f"{missing[:20]}"
+    )
 
-idx = np.asarray(idx, dtype=np.int64)
+rhs_indices = np.asarray(
+    [
+        full_map[key(point)]
+        for point in rhs_coords
+    ],
+    dtype=np.int64,
+)
 
-if len(np.unique(idx)) != len(idx):
-    raise RuntimeError("Duplicate Mtilde indices found in RHS mapping.")
+if np.unique(rhs_indices).size != expected_n:
+    raise RuntimeError(
+        "Duplicate full-grid indices found in "
+        "the RHS coordinate mapping"
+    )
 
-mapped = full_coords[idx]
-max_coord_diff = float(np.max(np.abs(mapped - rhs_coords)))
+mapped = full_coords[rhs_indices]
+
+max_coord_diff = float(
+    np.max(np.abs(mapped - rhs_coords))
+)
 
 if max_coord_diff > 1e-8:
-    raise RuntimeError(f"Mapped coords do not match RHS coords. max diff = {max_coord_diff}")
+    raise RuntimeError(
+        "Mapped coordinates do not match RHS "
+        f"coordinates: {max_coord_diff}"
+    )
 
-print("Mapping PASS")
-print("  row order = z_y_x from field[iz, iy, ix], x fastest")
-print("  idx size =", idx.size)
-print("  max_coord_diff =", max_coord_diff)
+full_shape = (
+    full_coords.shape[0],
+    full_coords.shape[0],
+)
 
-M_interior = M[idx, :][:, idx].tocsr()
+matrix_source_mode = None
+matrix_permutation_applied = False
 
-save_npz(OUT / "Mtilde_q1_consistent_interior_38440_sparse.npz", M_interior)
-np.save(OUT / "Mtilde_q1_consistent_interior_38440_indices.npy", idx)
-np.save(OUT / "Mtilde_q1_consistent_interior_38440_coords.npy", rhs_coords)
+if matrix.shape == full_shape:
+    active_matrix = matrix[
+        rhs_indices, :
+    ][
+        :, rhs_indices
+    ].tocsr()
 
-print("Solving M_interior g_lambda = RHS_total_lambda ...")
-g_lam = spsolve(M_interior, rhs_lam)
+    matrix_source_mode = "full_matrix_extract"
 
-print("Solving M_interior g_mu = RHS_total_mu ...")
-g_mu = spsolve(M_interior, rhs_mu)
-
-np.save(OUT / "g_lambda_mtilde_q1_interior_solve_rhs_total.npy", g_lam)
-np.save(OUT / "g_mu_mtilde_q1_interior_solve_rhs_total.npy", g_mu)
-np.save(OUT / "g_mtilde_q1_interior_solve_rhs_total_coords.npy", rhs_coords)
-
-res_lam = M_interior @ g_lam - rhs_lam
-res_mu = M_interior @ g_mu - rhs_mu
-
-rel_res_lam = np.linalg.norm(res_lam) / max(np.linalg.norm(rhs_lam), 1e-300)
-rel_res_mu = np.linalg.norm(res_mu) / max(np.linalg.norm(rhs_mu), 1e-300)
-
-summary = []
-summary.append("Mtilde interior solve RHS_total summary")
-summary.append("======================================")
-summary.append("")
-summary.append(f"M_PATH = {M_PATH}")
-summary.append(f"full M shape = {M.shape}")
-summary.append(f"full M nnz = {M.nnz}")
-summary.append("")
-summary.append("Mtilde grid source:")
-summary.append("  scripts/audit/302_build_q1_consistent_mtilde.py")
-summary.append("  shape convention = field[iz, iy, ix]")
-summary.append("  row order = z_y_x")
-summary.append("  x fastest in C-order")
-summary.append("  z = linspace(0.0, -50.0, 41)")
-summary.append("")
-summary.append(f"full grid nx ny nz = {nx} {ny} {nz}")
-summary.append(f"full grid total nodes = {full_coords.shape[0]}")
-summary.append("")
-summary.append(f"interior idx size = {idx.size}")
-summary.append(f"interior idx unique = {len(np.unique(idx))}")
-summary.append(f"max mapped coord diff = {max_coord_diff:.16e}")
-summary.append("")
-summary.append(f"M_interior shape = {M_interior.shape}")
-summary.append(f"M_interior nnz = {M_interior.nnz}")
-summary.append("")
-summary.append(f"rhs_lambda finite = {np.count_nonzero(np.isfinite(rhs_lam))} / {rhs_lam.size}")
-summary.append(f"rhs_mu finite = {np.count_nonzero(np.isfinite(rhs_mu))} / {rhs_mu.size}")
-summary.append("")
-summary.append(f"g_lambda finite = {np.count_nonzero(np.isfinite(g_lam))} / {g_lam.size}")
-summary.append(f"g_mu finite = {np.count_nonzero(np.isfinite(g_mu))} / {g_mu.size}")
-summary.append("")
-summary.append(f"g_lambda min = {np.min(g_lam):.16e}")
-summary.append(f"g_lambda max = {np.max(g_lam):.16e}")
-summary.append(f"g_lambda maxabs = {np.max(np.abs(g_lam)):.16e}")
-summary.append(f"g_lambda l2 = {np.sqrt(np.sum(g_lam * g_lam)):.16e}")
-summary.append("")
-summary.append(f"g_mu min = {np.min(g_mu):.16e}")
-summary.append(f"g_mu max = {np.max(g_mu):.16e}")
-summary.append(f"g_mu maxabs = {np.max(np.abs(g_mu)):.16e}")
-summary.append(f"g_mu l2 = {np.sqrt(np.sum(g_mu * g_mu)):.16e}")
-summary.append("")
-summary.append(f"relative residual lambda = {rel_res_lam:.16e}")
-summary.append(f"relative residual mu = {rel_res_mu:.16e}")
-summary.append("")
-summary.append("Outputs:")
-summary.append(f"  {OUT / 'Mtilde_q1_consistent_interior_38440_sparse.npz'}")
-summary.append(f"  {OUT / 'Mtilde_q1_consistent_interior_38440_indices.npy'}")
-summary.append(f"  {OUT / 'Mtilde_q1_consistent_interior_38440_coords.npy'}")
-summary.append(f"  {OUT / 'g_lambda_mtilde_q1_interior_solve_rhs_total.npy'}")
-summary.append(f"  {OUT / 'g_mu_mtilde_q1_interior_solve_rhs_total.npy'}")
-summary.append(f"  {OUT / 'g_mtilde_q1_interior_solve_rhs_total_coords.npy'}")
-summary.append("")
-summary.append("NEXT_STEP_NOTE:")
-summary.append("  g_lambda and g_mu are defined on the 38440 interior material-grid nodes.")
-summary.append("  Before line-search, decide whether to update only these interior nodes or embed them back into the 44649-node full grid.")
-summary.append("")
-if (
-    np.all(np.isfinite(g_lam))
-    and np.all(np.isfinite(g_mu))
-    and rel_res_lam < 1e-8
-    and rel_res_mu < 1e-8
+elif matrix.shape == (
+    expected_n,
+    expected_n,
 ):
-    summary.append("RESULT = PASS")
-    summary.append("Meaning: interior Q1 Mtilde solve completed.")
-else:
-    summary.append("RESULT = CHECK")
-    summary.append("Meaning: solve finished, but inspect residual/finite stats before using direction.")
+    if matrix_indices_path is None:
+        raise RuntimeError(
+            "A reduced matrix requires "
+            "--matrix-indices so it can be "
+            "reordered to the RHS coordinate order"
+        )
 
-txt = "\n".join(summary) + "\n"
-(OUT / "mtilde_q1_interior_solve_rhs_total_summary.txt").write_text(txt)
-print("")
-print(txt)
+    artifact_indices = np.load(
+        matrix_indices_path
+    ).astype(np.int64)
+
+    if artifact_indices.shape != (
+        expected_n,
+    ):
+        raise RuntimeError(
+            "Unexpected reduced matrix index shape: "
+            f"{artifact_indices.shape}"
+        )
+
+    if np.unique(artifact_indices).size != expected_n:
+        raise RuntimeError(
+            "Reduced matrix indices are not unique"
+        )
+
+    artifact_position = {
+        int(full_index): position
+        for position, full_index
+        in enumerate(artifact_indices)
+    }
+
+    missing_indices = [
+        int(full_index)
+        for full_index in rhs_indices
+        if int(full_index)
+        not in artifact_position
+    ]
+
+    if missing_indices:
+        raise RuntimeError(
+            "RHS controls are not covered by the "
+            "reduced Mtilde artifact. First missing: "
+            f"{missing_indices[:20]}"
+        )
+
+    permutation = np.asarray(
+        [
+            artifact_position[int(full_index)]
+            for full_index in rhs_indices
+        ],
+        dtype=np.int64,
+    )
+
+    if np.unique(permutation).size != expected_n:
+        raise RuntimeError(
+            "Reduced matrix reorder permutation "
+            "is not unique"
+        )
+
+    if matrix_coords_path is not None:
+        artifact_coords = np.load(
+            matrix_coords_path
+        ).astype(np.float64)
+
+        if artifact_coords.shape != (
+            expected_n,
+            3,
+        ):
+            raise RuntimeError(
+                "Unexpected reduced matrix "
+                "coordinate shape: "
+                f"{artifact_coords.shape}"
+            )
+
+        artifact_coord_diff = float(
+            np.max(
+                np.abs(
+                    full_coords[artifact_indices]
+                    - artifact_coords
+                )
+            )
+        )
+
+        if artifact_coord_diff > 1e-8:
+            raise RuntimeError(
+                "Reduced matrix coordinate artifact "
+                "does not match its indices: "
+                f"{artifact_coord_diff}"
+            )
+
+    active_matrix = matrix[
+        permutation, :
+    ][
+        :, permutation
+    ].tocsr()
+
+    matrix_source_mode = "reduced_matrix_reorder"
+    matrix_permutation_applied = not np.array_equal(
+        permutation,
+        np.arange(expected_n),
+    )
+
+else:
+    raise RuntimeError(
+        "Mtilde matrix must be either the full "
+        f"{full_shape} matrix or an "
+        f"{(expected_n, expected_n)} reduced matrix. "
+        f"Received {matrix.shape}"
+    )
+
+matrix_name = (
+    "Mtilde_q1_consistent_interior_"
+    f"{expected_n}"
+)
+
+matrix_out = (
+    out_dir
+    / f"{matrix_name}_sparse.npz"
+)
+
+indices_out = (
+    out_dir
+    / f"{matrix_name}_indices.npy"
+)
+
+coords_out = (
+    out_dir
+    / f"{matrix_name}_coords.npy"
+)
+
+save_npz(
+    matrix_out,
+    active_matrix,
+)
+
+np.save(
+    indices_out,
+    rhs_indices,
+)
+
+np.save(
+    coords_out,
+    rhs_coords,
+)
+
+print(
+    "Solving active Mtilde g_lambda "
+    "= RHS_total_lambda ..."
+)
+
+gradient_lambda = spsolve(
+    active_matrix,
+    rhs_lambda,
+)
+
+print(
+    "Solving active Mtilde g_mu "
+    "= RHS_total_mu ..."
+)
+
+gradient_mu = spsolve(
+    active_matrix,
+    rhs_mu,
+)
+
+gradient_lambda_path = (
+    out_dir
+    / "g_lambda_mtilde_q1_"
+    "interior_solve_rhs_total.npy"
+)
+
+gradient_mu_path = (
+    out_dir
+    / "g_mu_mtilde_q1_"
+    "interior_solve_rhs_total.npy"
+)
+
+gradient_coords_path = (
+    out_dir
+    / "g_mtilde_q1_interior_"
+    "solve_rhs_total_coords.npy"
+)
+
+np.save(
+    gradient_lambda_path,
+    gradient_lambda,
+)
+
+np.save(
+    gradient_mu_path,
+    gradient_mu,
+)
+
+np.save(
+    gradient_coords_path,
+    rhs_coords,
+)
+
+residual_lambda = (
+    active_matrix @ gradient_lambda
+    - rhs_lambda
+)
+
+residual_mu = (
+    active_matrix @ gradient_mu
+    - rhs_mu
+)
+
+relative_residual_lambda = (
+    np.linalg.norm(residual_lambda)
+    / max(
+        np.linalg.norm(rhs_lambda),
+        1e-300,
+    )
+)
+
+relative_residual_mu = (
+    np.linalg.norm(residual_mu)
+    / max(
+        np.linalg.norm(rhs_mu),
+        1e-300,
+    )
+)
+
+summary = [
+    "Mtilde active solve RHS_total summary",
+    "======================================",
+    "",
+    f"matrix_path = {matrix_path}",
+    f"input matrix shape = {matrix.shape}",
+    f"input matrix nnz = {matrix.nnz}",
+    f"matrix_source_mode = {matrix_source_mode}",
+    (
+        "matrix_permutation_applied = "
+        f"{matrix_permutation_applied}"
+    ),
+    "",
+    f"active_count = {expected_n}",
+    (
+        "active full-grid indices unique = "
+        f"{np.unique(rhs_indices).size}"
+    ),
+    (
+        "max mapped coordinate difference = "
+        f"{max_coord_diff:.16e}"
+    ),
+    "",
+    f"active matrix shape = {active_matrix.shape}",
+    f"active matrix nnz = {active_matrix.nnz}",
+    "",
+    (
+        "relative residual lambda = "
+        f"{relative_residual_lambda:.16e}"
+    ),
+    (
+        "relative residual mu = "
+        f"{relative_residual_mu:.16e}"
+    ),
+    "",
+    "Outputs:",
+    f"  {matrix_out}",
+    f"  {indices_out}",
+    f"  {coords_out}",
+    f"  {gradient_lambda_path}",
+    f"  {gradient_mu_path}",
+    f"  {gradient_coords_path}",
+    "",
+]
+
+passed = (
+    np.all(np.isfinite(gradient_lambda))
+    and np.all(np.isfinite(gradient_mu))
+    and relative_residual_lambda < 1e-8
+    and relative_residual_mu < 1e-8
+)
+
+if passed:
+    summary.extend(
+        [
+            "RESULT = PASS",
+            (
+                "Meaning: active Q1 Mtilde solve "
+                "completed."
+            ),
+        ]
+    )
+else:
+    summary.extend(
+        [
+            "RESULT = CHECK",
+            (
+                "Meaning: solve finished, but "
+                "inspect residual and finite stats."
+            ),
+        ]
+    )
+
+summary_text = "\n".join(summary) + "\n"
+
+summary_path = (
+    out_dir
+    / "mtilde_q1_interior_solve_"
+    "rhs_total_summary.txt"
+)
+
+summary_path.write_text(
+    summary_text,
+    encoding="utf-8",
+)
+
+print()
+print(summary_text)
+
+if not passed:
+    raise SystemExit(2)

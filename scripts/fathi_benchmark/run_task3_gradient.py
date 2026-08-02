@@ -44,6 +44,9 @@ config_path = resolve_path(
 config = json.loads(
     config_path.read_text(encoding="utf-8")
 )
+expected_n = int(
+    config.get("interior_gradient_size", 38440)
+)
 
 run_result_root = (
     resolve_path(
@@ -92,6 +95,8 @@ def cmd_rhs(comp):
         str(component_rhs_dir),
         "--label",
         "full_grid_trace",
+        "--expected-count",
+        str(expected_n),
     ]
 
 def cmd_rhs_total():

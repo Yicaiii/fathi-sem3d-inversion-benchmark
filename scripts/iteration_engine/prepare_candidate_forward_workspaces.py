@@ -46,10 +46,14 @@ run_data_root = (
 
 candidate_root = run_result_root / "candidates"
 
+strict_workspace_name = config.get(
+    "strict_forward_workspace_name",
+    "strict_full_forward_000",
+)
 template_dir = (
     run_data_root
     / "forward_dudx_mgcap_full_batches"
-    / "strict_full_forward_000"
+    / strict_workspace_name
 )
 
 forward_root = (

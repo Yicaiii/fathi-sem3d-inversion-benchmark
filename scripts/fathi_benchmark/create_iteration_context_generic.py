@@ -60,20 +60,38 @@ def main() -> None:
         config["true_observed_traces_dir"], repo_root=ROOT
     )
 
-    parent_state = state_dir / f"iter_{k:03d}_state_v2_corrected.npz"
+    parent_state_value = config.get("parent_state_path")
+    parent_state = (
+        runtime_resolve_path(parent_state_value, repo_root=ROOT)
+        if parent_state_value
+        else state_dir / f"iter_{k:03d}_state_v2_corrected.npz"
+    )
     next_state = state_dir / f"iter_{kp1:03d}_state_v2_corrected.npz"
     output_iter_root = run_data_root / f"iter_{kp1:03d}"
     transition_root = run_result_root / transition
-    parent_accepted = run_data_root / f"iter_{k:03d}" / "accepted"
+    parent_accepted_value = config.get("parent_accepted_dir")
+    parent_accepted = (
+        runtime_resolve_path(parent_accepted_value, repo_root=ROOT)
+        if parent_accepted_value
+        else run_data_root / f"iter_{k:03d}" / "accepted"
+    )
     accepted_next = output_iter_root / "accepted"
 
+    strict_workspace_name = config.get(
+        "strict_forward_workspace_name",
+        "strict_full_forward_000",
+    )
+    adjoint_dir_name = config.get(
+        "adjoint_batches_dir_name",
+        "adjoint_full_grid_batches",
+    )
     strict_workspace = (
         output_iter_root
         / "forward_dudx_mgcap_full_batches"
-        / "strict_full_forward_000"
+        / strict_workspace_name
     )
     residual_dir = transition_root / "residual_sources"
-    adjoint_dir = output_iter_root / "adjoint_full_grid_batches"
+    adjoint_dir = output_iter_root / adjoint_dir_name
     rhs_dir = transition_root / "component_rhs"
     mtilde_dir = transition_root / "mtilde_solve"
 
@@ -88,12 +106,21 @@ def main() -> None:
     matrix_path = runtime_resolve_path(
         matrix_value, repo_root=ROOT
     )
+    profile_value = config.get(
+        "benchmark_profile_config",
+        "configs/fathi_reduced_3x3_12p5.json",
+    )
+    profile_path = runtime_resolve_path(
+        profile_value,
+        repo_root=ROOT,
+    )
 
     context = {
         "created": datetime.now().isoformat(),
         "project_root": context_path_value(ROOT),
         "runtime_root": context_path_value(RUNTIME),
         "config_path": context_path_value(config_path),
+        "benchmark_profile_config": context_path_value(profile_path),
         "iter_k": k,
         "iter_kp1": kp1,
         "transition": transition,
