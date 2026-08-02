@@ -1537,3 +1537,9 @@ artifacts/mtilde/<artifact-id>/
 The matrix, coordinates, indices, hashes, ordering contract, and parent
 artifact are recorded in the manifest. The active artifact paths are written
 to both the iteration context and the benchmark configuration.
+
+The gradient task enforces Mtilde as a prerequisite.
+`scripts/fathi_benchmark/run_task3_gradient.py` first runs
+`scripts.mtilde.ensure_mtilde` for the current iteration context and only then
+delegates to `run_task3_gradient_core.py`. This applies to every caller,
+including the canonical iteration runner and direct task invocation.

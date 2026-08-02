@@ -1,228 +1,200 @@
-from datetime import datetime
-import argparse
+from __future__ import annotations
+
+from argparse import ArgumentParser
+from pathlib import Path
+from typing import Sequence
 import json
 import subprocess
 import sys
 
-from scripts.fathi_benchmark.runtime_paths import (
-    repository_root,
-    resolve_path,
+
+ROOT = Path(__file__).resolve().parents[2]
+CORE = Path(__file__).resolve().with_name(
+    "run_task3_gradient_core.py"
 )
 
-ROOT = repository_root()
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--iter-k", type=int, required=True)
-parser.add_argument(
-    "--stage",
-    choices=[
-        "plan",
-        "manifests",
-        "rhs_x",
-        "rhs_y",
-        "rhs_z",
-        "rhs_total",
-        "mtilde",
-        "audit",
-        "all",
-    ],
-    default="plan",
-)
-parser.add_argument("--execute", action="store_true")
-parser.add_argument("--config", default="benchmark_fathi_strict/config/benchmark_config.json")
-args = parser.parse_args()
+def resolve_path(
+    value: str | Path,
+    base: Path,
+) -> Path:
+    path = Path(value).expanduser()
 
-k = args.iter_k
-kp1 = k + 1
-transition = f"iter_{k:03d}_to_iter_{kp1:03d}"
+    if not path.is_absolute():
+        path = base / path
 
-config_path = resolve_path(
-    args.config,
-    base=ROOT,
-)
+    return path.resolve()
 
-config = json.loads(
-    config_path.read_text(encoding="utf-8")
-)
-expected_n = int(
-    config.get("interior_gradient_size", 38440)
-)
 
-run_result_root = (
-    resolve_path(
-        config["run_result_root"],
-        base=ROOT,
+def remove_option(
+    argv: Sequence[str],
+    option: str,
+) -> list[str]:
+    result: list[str] = []
+    index = 0
+
+    while index < len(argv):
+        token = argv[index]
+
+        if token == option:
+            index += 2
+            continue
+
+        if token.startswith(option + "="):
+            index += 1
+            continue
+
+        result.append(token)
+        index += 1
+
+    return result
+
+
+def resolve_context_path(
+    root: Path,
+    config_path: Path,
+    iter_k: int,
+    explicit_context: str | None,
+) -> Path:
+    if explicit_context:
+        context_path = resolve_path(
+            explicit_context,
+            root,
+        )
+    else:
+        config = json.loads(
+            config_path.read_text(
+                encoding="utf-8",
+            )
+        )
+
+        run_result_root = resolve_path(
+            config["run_result_root"],
+            root,
+        )
+
+        transition = (
+            f"iter_{iter_k:03d}_to_"
+            f"iter_{iter_k + 1:03d}"
+        )
+
+        context_path = (
+            run_result_root
+            / transition
+            / (
+                f"{transition}_"
+                "iteration_context.json"
+            )
+        )
+
+    if not context_path.is_file():
+        raise SystemExit(
+            "Gradient requires an existing iteration "
+            f"context: {context_path}"
+        )
+
+    return context_path
+
+
+def main() -> int:
+    parser = ArgumentParser(
+        add_help=False,
     )
-    / transition
-)
-manifest_dir = run_result_root / "rhs_manifests"
-component_rhs_dir = run_result_root / "component_rhs"
+    parser.add_argument(
+        "--iter-k",
+        type=int,
+        required=True,
+    )
+    parser.add_argument(
+        "--config",
+        required=True,
+    )
+    parser.add_argument(
+        "--context",
+    )
 
-report_dir = resolve_path(
-    "benchmark_fathi_strict/reports/task_wrappers",
-    base=ROOT,
-)
-report_dir.mkdir(parents=True, exist_ok=True)
+    known, _ = parser.parse_known_args()
 
-created = datetime.now().isoformat()
+    config_path = resolve_path(
+        known.config,
+        ROOT,
+    )
 
-def cmd_manifests():
-    return [
+    if not config_path.is_file():
+        raise SystemExit(
+            f"Missing benchmark config: {config_path}"
+        )
+
+    context_path = resolve_context_path(
+        ROOT,
+        config_path,
+        known.iter_k,
+        known.context,
+    )
+
+    ensure_command = [
         sys.executable,
         "-m",
-        "scripts.iteration_engine.build_rhs_manifests_generic_v2",
-        "--iter-k", str(k),
-        "--config", args.config,
-    ]
-
-def cmd_rhs(comp):
-    return [
-        sys.executable,
-        "-m",
-        "scripts.longterm.424B_compute_rhs_component_from_traces",
-        "--component", comp,
-        "--forward-manifest",
-        str(
-            manifest_dir
-            / "forward_full_grid_trace_manifest.csv"
-        ),
-        "--adjoint-manifest",
-        str(
-            manifest_dir
-            / f"adjoint_{comp}_full_grid_trace_manifest.csv"
-        ),
-        "--out-dir",
-        str(component_rhs_dir),
-        "--label",
-        "full_grid_trace",
-        "--expected-count",
-        str(expected_n),
-    ]
-
-def cmd_rhs_total():
-    return [
-        sys.executable,
-        "-m",
-        "scripts.iteration_engine.assemble_rhs_total_generic",
-        "--iter-k", str(k),
-        "--config", args.config,
-    ]
-
-def cmd_mtilde():
-    return [
-        sys.executable,
-        "-m",
-        "scripts.iteration_engine.solve_mtilde_generic",
-        "--iter-k", str(k),
-        "--config", args.config,
+        "scripts.mtilde.ensure_mtilde",
+        "--config",
+        str(config_path),
+        "--context",
+        str(context_path),
         "--execute",
     ]
 
-def cmd_audit():
-    return [
+    print(
+        "Gradient prerequisite: ensuring Mtilde artifact"
+    )
+    print(
+        "  " + " ".join(ensure_command)
+    )
+
+    ensure_process = subprocess.run(
+        ensure_command,
+        cwd=ROOT,
+    )
+
+    if ensure_process.returncode != 0:
+        print(
+            "RESULT = FAIL_MTILDE_PREREQUISITE"
+        )
+        return ensure_process.returncode
+
+    if not CORE.is_file():
+        print(
+            f"Missing gradient core: {CORE}"
+        )
+        print(
+            "RESULT = FAIL_MISSING_GRADIENT_CORE"
+        )
+        return 1
+
+    forwarded = remove_option(
+        sys.argv[1:],
+        "--context",
+    )
+
+    core_command = [
         sys.executable,
-        "-m",
-        "scripts.iteration_engine.audit_mtilde_outputs_generic",
-        "--iter-k", str(k),
-        "--config", args.config,
+        str(CORE),
+        *forwarded,
     ]
 
-command_map = {
-    "manifests": cmd_manifests(),
-    "rhs_x": cmd_rhs("x"),
-    "rhs_y": cmd_rhs("y"),
-    "rhs_z": cmd_rhs("z"),
-    "rhs_total": cmd_rhs_total(),
-    "mtilde": cmd_mtilde(),
-    "audit": cmd_audit(),
-}
+    print(
+        "Mtilde ready. Running gradient core"
+    )
+    print(
+        "  " + " ".join(core_command)
+    )
 
-all_sequence = [
-    "manifests",
-    "rhs_x",
-    "rhs_y",
-    "rhs_z",
-    "rhs_total",
-    "mtilde",
-    "audit",
-]
+    core_process = subprocess.run(
+        core_command,
+        cwd=ROOT,
+    )
 
-def run_cmd(name, cmd):
-    print("")
-    print("=" * 100)
-    print(f"TASK 3 RUNNING: {name}")
-    print("=" * 100)
-    print(" ".join(cmd))
-    print("")
+    return core_process.returncode
 
-    proc = subprocess.run(cmd, cwd=ROOT, text=True)
-    if proc.returncode != 0:
-        print("")
-        print(f"TASK 3 FAILED: {name}")
-        print(f"returncode = {proc.returncode}")
-        sys.exit(proc.returncode)
 
-plan = {
-    "created": created,
-    "transition": transition,
-    "stage": args.stage,
-    "execute": args.execute,
-    "commands": command_map,
-    "all_sequence": all_sequence,
-    "outputs": {
-        "component_rhs_dir": str(component_rhs_dir),
-        "mtilde_solve_dir": str(run_result_root / "mtilde_solve"),
-    },
-}
-
-plan_json = report_dir / f"{transition}_task3_gradient_plan.json"
-plan_txt = report_dir / f"{transition}_task3_gradient_plan.txt"
-
-lines = []
-lines.append("Canonical Task 3 gradient runner")
-lines.append("================================")
-lines.append("")
-lines.append(f"created = {created}")
-lines.append(f"transition = {transition}")
-lines.append(f"stage = {args.stage}")
-lines.append(f"execute = {args.execute}")
-lines.append("")
-lines.append("Task 3 sequence:")
-for name in all_sequence:
-    lines.append(f"  {name}")
-lines.append("")
-lines.append("Commands:")
-for name in all_sequence:
-    lines.append("-" * 80)
-    lines.append(name)
-    lines.append("  " + " ".join(command_map[name]))
-lines.append("")
-lines.append("Outputs:")
-lines.append(f"  component_rhs_dir = {component_rhs_dir}")
-lines.append(f"  mtilde_solve_dir = {run_result_root / 'mtilde_solve'}")
-lines.append("")
-lines.append("RESULT = PASS_PLAN")
-
-plan_json.write_text(json.dumps(plan, indent=2), encoding="utf-8")
-plan_txt.write_text("\n".join(lines), encoding="utf-8")
-
-print("\n".join(lines))
-
-if args.stage == "plan":
-    sys.exit(0)
-
-if not args.execute:
-    print("")
-    print("DRY WRAPPER ONLY.")
-    print("No command was executed because --execute was not provided.")
-    print("RESULT = PASS_DRYRUN")
-    sys.exit(0)
-
-if args.stage == "all":
-    for name in all_sequence:
-        run_cmd(name, command_map[name])
-else:
-    run_cmd(args.stage, command_map[args.stage])
-
-print("")
-print("RESULT = PASS")
+if __name__ == "__main__":
+    raise SystemExit(main())
