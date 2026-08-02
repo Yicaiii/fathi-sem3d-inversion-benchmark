@@ -5,7 +5,10 @@ import json
 import subprocess
 import sys
 
-from runtime_paths import repository_root
+try:
+    from scripts.fathi_benchmark.runtime_paths import repository_root
+except ModuleNotFoundError:
+    from runtime_paths import repository_root
 
 ROOT = repository_root()
 

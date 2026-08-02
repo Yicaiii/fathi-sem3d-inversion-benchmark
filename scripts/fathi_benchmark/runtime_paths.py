@@ -97,3 +97,32 @@ def sem3d_executable(
         "SEM3D executable is not configured. "
         "Set SEM3D_EXE or provide sem3d_exe in the benchmark config."
     )
+
+def runtime_resolve_path(
+    value: str | Path,
+    *,
+    repo_root: Path | None = None,
+    prefer_existing_legacy: bool = True,
+) -> Path:
+    # Resolve heavy runtime paths below FATHI_RUNTIME_ROOT.
+    repository = repo_root or repository_root()
+    path = Path(value).expanduser()
+    if path.is_absolute():
+        return path.resolve()
+
+    runtime_candidate = (runtime_root(repository) / path).resolve()
+    legacy_candidate = (repository / path).resolve()
+
+    if (
+        prefer_existing_legacy
+        and not runtime_candidate.exists()
+        and legacy_candidate.exists()
+    ):
+        return legacy_candidate
+
+    return runtime_candidate
+
+
+def context_path_value(path: str | Path) -> str:
+    # Context files use absolute paths so an external runtime root is unambiguous.
+    return str(Path(path).expanduser().resolve())

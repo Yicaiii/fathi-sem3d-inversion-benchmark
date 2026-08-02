@@ -210,8 +210,15 @@ gL = np.load(gL_path).astype(np.float64)
 gM = np.load(gM_path).astype(np.float64)
 idx = np.load(idx_path).astype(np.int64)
 
-if gL.shape != (38440,) or gM.shape != (38440,) or idx.shape != (38440,):
-    raise RuntimeError(f"Unexpected gradient/index shapes: gL={gL.shape}, gM={gM.shape}, idx={idx.shape}")
+if idx.ndim != 1:
+    raise RuntimeError(f"Active indices must be 1-D: {idx.shape}")
+if gL.shape != idx.shape or gM.shape != idx.shape:
+    raise RuntimeError(
+        "Gradient/index shape mismatch: "
+        f"gL={gL.shape}, gM={gM.shape}, idx={idx.shape}"
+    )
+if np.unique(idx).size != idx.size:
+    raise RuntimeError("Duplicate active indices detected")
 
 if not np.all(np.isfinite(gL)) or not np.all(np.isfinite(gM)):
     raise RuntimeError("Non-finite gradient values.")

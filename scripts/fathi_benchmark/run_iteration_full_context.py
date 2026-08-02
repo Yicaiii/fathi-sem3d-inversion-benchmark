@@ -5,12 +5,27 @@ import json
 import subprocess
 import sys
 
-from runtime_paths import repository_root
+try:
+    from scripts.fathi_benchmark.runtime_paths import (
+        repository_root,
+        resolve_path,
+        runtime_resolve_path,
+    )
+except ModuleNotFoundError:
+    from runtime_paths import (
+        repository_root,
+        resolve_path,
+        runtime_resolve_path,
+    )
 
 ROOT = repository_root()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--context", default=None)
+parser.add_argument(
+    "--config",
+    default="benchmark_fathi_strict/config/benchmark_config.json",
+)
 parser.add_argument("--iter-k", type=int, default=None)
 parser.add_argument(
     "--stage",
@@ -50,16 +65,28 @@ def load_context():
     else:
         if args.iter_k is None:
             raise SystemExit("Need either --context or --iter-k")
-        k = args.iter_k
-        kp1 = k + 1
-        transition = f"iter_{k:03d}_to_iter_{kp1:03d}"
-        ctx_path = ROOT / "results/fathi_loop_v2" / transition / f"{transition}_iteration_context.json"
-
+        config_path = resolve_path(args.config, base=ROOT)
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        transition = (
+            f"iter_{args.iter_k:03d}_to_"
+            f"iter_{args.iter_k + 1:03d}"
+        )
+        result_root = runtime_resolve_path(
+            config["run_result_root"],
+            repo_root=ROOT,
+        )
+        ctx_path = (
+            result_root
+            / transition
+            / f"{transition}_iteration_context.json"
+        )
     if not ctx_path.exists():
-        raise SystemExit(f"Missing context: {ctx_path}")
-
+        raise SystemExit(
+            f"Missing context: {ctx_path}\\n"
+            "Create it with create_iteration_context_generic.py --write."
+        )
     ctx = json.loads(ctx_path.read_text(encoding="utf-8"))
-    return ctx_path, ctx
+    return ctx_path.resolve(), ctx
 
 ctx_path, ctx = load_context()
 
@@ -75,7 +102,7 @@ created = datetime.now().isoformat()
 out_json = report_dir / f"{transition}_run_iteration_full_context_{args.stage}.json"
 out_txt = report_dir / f"{transition}_run_iteration_full_context_{args.stage}.txt"
 
-ctx_rel = str(ctx_path.relative_to(ROOT))
+ctx_rel = str(ctx_path)
 
 def cmd_prepare_strict_forward(execute=True):
     cmd = [sys.executable, "scripts/fathi_benchmark/run_task1b_prepare_strict_forward.py", "--context", ctx_rel]
