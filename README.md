@@ -1441,3 +1441,53 @@ RESULT = PASS_MINI_ITER001_TO_ITER002_FORWARD_HANDOFF
 
 See `docs/MINI_ITERATION_HANDOFF.md`.
 
+<!-- TV_FINAL_SUMMARY_V1 -->
+
+## TV regularization in the generic iteration
+
+TV regularization is integrated as an optional stage inside each inversion
+transition:
+
+```text
+data RHS
+→ TV RHS
+→ total RHS
+→ Mtilde total gradient
+→ TV candidates
+→ candidate forward
+→ total objective
+→ acceptance
+```
+
+Canonical stages:
+
+```text
+regularization
+tv_candidates
+tv_acceptance_plan
+all_light_tv
+```
+
+Lightweight validation:
+
+```bash
+python -m scripts.regularization.validate_tv_lightweight
+python -m pytest -q
+```
+
+Validated boundary:
+
+```text
+TV mathematics and workflow integration: PASS
+SEM3D launched by lightweight tests: False
+accepted state mutated: False
+new full-scale non-zero-TV physical descent: Not claimed
+```
+
+Detailed documentation:
+
+```text
+docs/SEM3D_ALGORITHM_EXPLAINED_CN.md
+docs/TV_IN_ITERATION_WORKFLOW.md
+docs/FINAL_REPORT_SCOPE_CN.md
+```

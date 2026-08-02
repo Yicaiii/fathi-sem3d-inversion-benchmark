@@ -84,10 +84,8 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--config",
-        default=(
-            "benchmark_fathi_tv/config/"
-            "tv_config_iter008_to_iter009.json"
-        ),
+        required=True,
+        help="Generic TV config generated from an iteration context.",
     )
     args = parser.parse_args()
 

@@ -25,34 +25,30 @@ def load_config(path: Path) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser()
 
-    parser.add_argument(
-        "--config",
-        default=(
-            "benchmark_fathi_tv/config/"
-            "tv_config_iter008_to_iter009.json"
-        ),
-    )
+    parser.add_argument("--config", required=True)
 
     parser.add_argument(
         "--label",
-        default="parent_iter008",
+        default=None,
+        help="Output branch label. Default: transition from config.",
     )
 
     args = parser.parse_args()
 
     config_path = resolve(args.config)
     config = load_config(config_path)
+    label = args.label or config.get("transition", "tv_parent")
 
     tv_root = (
         resolve(config["tv_transition_dir"])
         / "tv_full_grid"
-        / args.label
+        / label
     )
 
     output_dir = (
         resolve(config["tv_transition_dir"])
         / "tv_active"
-        / args.label
+        / label
     )
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -119,6 +115,9 @@ def main() -> None:
         raise RuntimeError(
             "Duplicate active indices detected"
         )
+
+    if active_indices.size == 0:
+        raise RuntimeError("No active indices were provided")
 
     if active_indices.min() < 0:
         raise RuntimeError(
@@ -202,7 +201,7 @@ def main() -> None:
 
     metadata = {
         "config": str(config_path),
-        "label": args.label,
+        "label": label,
         "full_shape": list(expected_shape),
         "full_node_count": full_node_count,
         "active_node_count": int(
@@ -273,7 +272,7 @@ def main() -> None:
     )
     summary.append("")
     summary.append(
-        f"label = {args.label}"
+        f"label = {label}"
     )
     summary.append(
         f"full shape = {expected_shape}"

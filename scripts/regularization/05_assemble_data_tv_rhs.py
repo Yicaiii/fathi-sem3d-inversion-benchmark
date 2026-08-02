@@ -40,34 +40,30 @@ def relative_l2(a: np.ndarray, b: np.ndarray) -> float:
 def main() -> None:
     parser = argparse.ArgumentParser()
 
-    parser.add_argument(
-        "--config",
-        default=(
-            "benchmark_fathi_tv/config/"
-            "tv_config_iter008_to_iter009.json"
-        ),
-    )
+    parser.add_argument("--config", required=True)
 
     parser.add_argument(
         "--label",
-        default="parent_iter008",
+        default=None,
+        help="Output branch label. Default: transition from config.",
     )
 
     args = parser.parse_args()
 
     config_path = resolve(args.config)
     config = load_config(config_path)
+    label = args.label or config.get("transition", "tv_parent")
 
     tv_active_dir = (
         resolve(config["tv_transition_dir"])
         / "tv_active"
-        / args.label
+        / label
     )
 
     output_dir = (
         resolve(config["tv_transition_dir"])
         / "combined_rhs"
-        / args.label
+        / label
     )
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -95,16 +91,16 @@ def main() -> None:
     tv_lambda = np.load(tv_lambda_path)
     tv_mu = np.load(tv_mu_path)
 
-    if data_lambda.shape != (38440,):
+    if data_lambda.ndim != 1 or data_mu.ndim != 1:
         raise RuntimeError(
-            "Unexpected data lambda RHS shape: "
-            f"{data_lambda.shape}"
+            "Data RHS arrays must be one-dimensional: "
+            f"lambda={data_lambda.shape}, mu={data_mu.shape}"
         )
 
-    if data_mu.shape != (38440,):
+    if data_lambda.shape != data_mu.shape:
         raise RuntimeError(
-            "Unexpected data mu RHS shape: "
-            f"{data_mu.shape}"
+            "Data lambda/mu RHS shape mismatch: "
+            f"{data_lambda.shape}, {data_mu.shape}"
         )
 
     if tv_lambda.shape != data_lambda.shape:
@@ -248,7 +244,7 @@ def main() -> None:
 
     metadata = {
         "config": str(config_path),
-        "label": args.label,
+        "label": label,
         "alpha_lambda": alpha_lambda,
         "alpha_mu": alpha_mu,
         "lambda": {
@@ -320,7 +316,7 @@ def main() -> None:
     )
     summary.append("")
     summary.append(
-        f"label = {args.label}"
+        f"label = {label}"
     )
     summary.append(
         f"alpha_lambda = {alpha_lambda:.16e}"

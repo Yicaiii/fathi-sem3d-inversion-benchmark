@@ -5,7 +5,20 @@ import json
 import subprocess
 import sys
 
-from runtime_paths import repository_root, sem3d_executable
+try:
+    from scripts.fathi_benchmark.runtime_paths import (
+        repository_root,
+        resolve_path,
+        runtime_resolve_path,
+        sem3d_executable,
+    )
+except ModuleNotFoundError:
+    from runtime_paths import (
+        repository_root,
+        resolve_path,
+        runtime_resolve_path,
+        sem3d_executable,
+    )
 
 ROOT = repository_root()
 
@@ -31,7 +44,25 @@ def load_context():
         k = args.iter_k
         kp1 = k + 1
         transition = f"iter_{k:03d}_to_iter_{kp1:03d}"
-        ctx_path = ROOT / "results/fathi_loop_v2" / transition / f"{transition}_iteration_context.json"
+
+        config_path = resolve_path(
+            args.config,
+            base=ROOT,
+        )
+        config = json.loads(
+            config_path.read_text(encoding="utf-8")
+        )
+
+        result_root = runtime_resolve_path(
+            config["run_result_root"],
+            repo_root=ROOT,
+        )
+
+        ctx_path = (
+            result_root
+            / transition
+            / f"{transition}_iteration_context.json"
+        )
 
     if not ctx_path.exists():
         raise SystemExit(f"Missing context: {ctx_path}")
@@ -68,7 +99,12 @@ if not traces_raw:
 workspace = rel_or_abs(workspace_raw)
 traces_dir = rel_or_abs(traces_raw)
 
-run_root = rel_or_abs(ctx.get("transition_result_root", f"results/fathi_loop_v2/{transition}"))
+run_root_raw = ctx.get("transition_result_root")
+run_root = (
+    rel_or_abs(run_root_raw)
+    if run_root_raw
+    else ctx_path.parent
+)
 log_dir = run_root / "strict_forward_run/logs"
 log_dir.mkdir(parents=True, exist_ok=True)
 
