@@ -1491,3 +1491,22 @@ docs/SEM3D_ALGORITHM_EXPLAINED_CN.md
 docs/TV_IN_ITERATION_WORKFLOW.md
 docs/FINAL_REPORT_SCOPE_CN.md
 ```
+
+## Unified iteration entry point
+
+The canonical public command is:
+
+```bash
+python -m scripts.fathi_benchmark.run_iteration \
+  --config benchmark_fathi_strict/config/benchmark_config.json \
+  --iter-k 0 \
+  --stage plan
+```
+
+Both public and compatibility entry points delegate to:
+
+```text
+scripts/fathi_benchmark/iteration_pipeline.py
+```
+
+`run_iteration_full_context.py` no longer contains a second implementation.
