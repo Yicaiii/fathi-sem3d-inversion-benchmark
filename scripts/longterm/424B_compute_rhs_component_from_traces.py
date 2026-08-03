@@ -14,6 +14,10 @@ parser.add_argument("--forward-manifest", required=True)
 parser.add_argument("--adjoint-manifest", required=True)
 parser.add_argument("--out-dir", required=True)
 parser.add_argument("--label", required=True)
+parser.add_argument(
+    "--expected-count",
+    type=int,
+)
 args = parser.parse_args()
 
 ROOT = repository_root()
@@ -133,10 +137,22 @@ def compute_rhs_one_receiver(f_arr, a_arr, f_dudx_cols, a_dudx_cols):
 fwd_rows = read_manifest(FWD_MANIFEST)
 adj_rows = read_manifest(ADJ_MANIFEST)
 
-if len(fwd_rows) != 38440:
-    raise RuntimeError(f"forward manifest rows != 38440: {len(fwd_rows)}")
-if len(adj_rows) != 38440:
-    raise RuntimeError(f"adjoint manifest rows != 38440: {len(adj_rows)}")
+if len(fwd_rows) != len(adj_rows):
+    raise RuntimeError(
+        "Forward and adjoint manifest row "
+        "counts differ: "
+        f"{len(fwd_rows)} vs {len(adj_rows)}"
+    )
+if (
+    args.expected_count is not None
+    and len(fwd_rows) != args.expected_count
+):
+    raise RuntimeError(
+        "Manifest row count does not match "
+        "the configured control count: "
+        f"{len(fwd_rows)} vs "
+        f"{args.expected_count}"
+    )
 
 adj_by_coord = {}
 for r in adj_rows:

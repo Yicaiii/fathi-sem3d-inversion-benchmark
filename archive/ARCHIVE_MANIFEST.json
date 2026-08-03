@@ -1,0 +1,106 @@
+{
+  "created_utc": "2026-08-02T23:16:27.454069+00:00",
+  "branch": "refactor/unify-runner-mtilde-archive",
+  "moved_files": [
+    {
+      "source": "scripts/fathi_benchmark/patch_root_portability.py.bak_root_20260702_154602",
+      "destination": "archive/development_backups/scripts/fathi_benchmark/patch_root_portability.py.bak_root_20260702_154602",
+      "reason": "tracked backup or explicitly broken development file"
+    },
+    {
+      "source": "scripts/fathi_benchmark/run_iteration.py.backup_20260702_000943",
+      "destination": "archive/development_backups/scripts/fathi_benchmark/run_iteration.py.backup_20260702_000943",
+      "reason": "tracked backup or explicitly broken development file"
+    },
+    {
+      "source": "scripts/fathi_benchmark/run_iteration.py.backup_before_Task1B_20260630_222943",
+      "destination": "archive/development_backups/scripts/fathi_benchmark/run_iteration.py.backup_before_Task1B_20260630_222943",
+      "reason": "tracked backup or explicitly broken development file"
+    },
+    {
+      "source": "scripts/fathi_benchmark/run_iteration.py.backup_before_Task1C_20260630_223357",
+      "destination": "archive/development_backups/scripts/fathi_benchmark/run_iteration.py.backup_before_Task1C_20260630_223357",
+      "reason": "tracked backup or explicitly broken development file"
+    },
+    {
+      "source": "scripts/fathi_benchmark/run_iteration.py.backup_before_Task1D_20260630_223722",
+      "destination": "archive/development_backups/scripts/fathi_benchmark/run_iteration.py.backup_before_Task1D_20260630_223722",
+      "reason": "tracked backup or explicitly broken development file"
+    },
+    {
+      "source": "scripts/fathi_benchmark/run_iteration.py.backup_before_Task1E_20260630_224451",
+      "destination": "archive/development_backups/scripts/fathi_benchmark/run_iteration.py.backup_before_Task1E_20260630_224451",
+      "reason": "tracked backup or explicitly broken development file"
+    },
+    {
+      "source": "scripts/fathi_benchmark/run_iteration.py.backup_before_Task1I_20260630_225258",
+      "destination": "archive/development_backups/scripts/fathi_benchmark/run_iteration.py.backup_before_Task1I_20260630_225258",
+      "reason": "tracked backup or explicitly broken development file"
+    },
+    {
+      "source": "scripts/fathi_benchmark/run_iteration.py.backup_before_Task2A_20260630_230302",
+      "destination": "archive/development_backups/scripts/fathi_benchmark/run_iteration.py.backup_before_Task2A_20260630_230302",
+      "reason": "tracked backup or explicitly broken development file"
+    },
+    {
+      "source": "scripts/fathi_benchmark/run_iteration.py.backup_before_prereq_20260702_154745",
+      "destination": "archive/development_backups/scripts/fathi_benchmark/run_iteration.py.backup_before_prereq_20260702_154745",
+      "reason": "tracked backup or explicitly broken development file"
+    },
+    {
+      "source": "scripts/fathi_benchmark/run_iteration.py.bak_root_20260702_154602",
+      "destination": "archive/development_backups/scripts/fathi_benchmark/run_iteration.py.bak_root_20260702_154602",
+      "reason": "tracked backup or explicitly broken development file"
+    },
+    {
+      "source": "scripts/fathi_benchmark/run_task1_strict_forward.py.backup_before_context_generic_20260703_115016",
+      "destination": "archive/development_backups/scripts/fathi_benchmark/run_task1_strict_forward.py.backup_before_context_generic_20260703_115016",
+      "reason": "tracked backup or explicitly broken development file"
+    },
+    {
+      "source": "scripts/fathi_benchmark/run_task2_residual_generation.py.backup_before_F6_context_20260703_141009",
+      "destination": "archive/development_backups/scripts/fathi_benchmark/run_task2_residual_generation.py.backup_before_F6_context_20260703_141009",
+      "reason": "tracked backup or explicitly broken development file"
+    },
+    {
+      "source": "scripts/fathi_benchmark/run_task2_residual_generation.py.bad_broken_new_wrapper_20260703_100447",
+      "destination": "archive/development_backups/scripts/fathi_benchmark/run_task2_residual_generation.py.bad_broken_new_wrapper_20260703_100447",
+      "reason": "tracked backup or explicitly broken development file"
+    },
+    {
+      "source": "scripts/fathi_benchmark/run_task2_residual_generation.py.bad_new_residual_rewrite_20260702_225905",
+      "destination": "archive/development_backups/scripts/fathi_benchmark/run_task2_residual_generation.py.bad_new_residual_rewrite_20260702_225905",
+      "reason": "tracked backup or explicitly broken development file"
+    },
+    {
+      "source": "scripts/fathi_benchmark/run_task2c_adjoint_batch.py.backup_before_context_generic_20260703_113616",
+      "destination": "archive/development_backups/scripts/fathi_benchmark/run_task2c_adjoint_batch.py.backup_before_context_generic_20260703_113616",
+      "reason": "tracked backup or explicitly broken development file"
+    },
+    {
+      "source": "scripts/fathi_benchmark/run_task3_gradient.py.bak_root_20260702_154602",
+      "destination": "archive/development_backups/scripts/fathi_benchmark/run_task3_gradient.py.bak_root_20260702_154602",
+      "reason": "tracked backup or explicitly broken development file"
+    },
+    {
+      "source": "scripts/fathi_benchmark/run_task4_candidates.py.bak_root_20260702_154602",
+      "destination": "archive/development_backups/scripts/fathi_benchmark/run_task4_candidates.py.bak_root_20260702_154602",
+      "reason": "tracked backup or explicitly broken development file"
+    },
+    {
+      "source": "scripts/fathi_benchmark/run_task5_candidate.py.bak_root_20260702_154602",
+      "destination": "archive/development_backups/scripts/fathi_benchmark/run_task5_candidate.py.bak_root_20260702_154602",
+      "reason": "tracked backup or explicitly broken development file"
+    },
+    {
+      "source": "scripts/fathi_benchmark/write_engine_status_final.py.bak_root_20260702_154602",
+      "destination": "archive/development_backups/scripts/fathi_benchmark/write_engine_status_final.py.bak_root_20260702_154602",
+      "reason": "tracked backup or explicitly broken development file"
+    }
+  ],
+  "legacy_runner_snapshots": [
+    "archive/legacy_runner_snapshots/run_iteration.py.before_unification",
+    "archive/legacy_runner_snapshots/run_iteration_full_context.py.before_unification"
+  ],
+  "one_off_candidate_report": "archive/reports/one_off_archive_candidates.txt"
+}

@@ -84,12 +84,23 @@ kp1 = k + 1
 transition = f"iter_{k:03d}_to_iter_{kp1:03d}"
 shape = tuple(config.get("material_shape", [41, 33, 33]))
 
+state_value = config.get("parent_state_path")
 state_in = (
     resolve_path(
-        config["state_dir"],
+        state_value,
         base=ROOT,
     )
-    / f"iter_{k:03d}_state_v2_corrected.npz"
+    if state_value
+    else (
+        resolve_path(
+            config["state_dir"],
+            base=ROOT,
+        )
+        / f"iter_{k:03d}_state_v2_corrected.npz"
+    )
+)
+expected_n = int(
+    config.get("interior_gradient_size", 38440)
 )
 
 run_result_root = (
@@ -104,19 +115,35 @@ mtilde_dir = run_result_root / "mtilde_solve"
 candidate_root = run_result_root / "candidates"
 candidate_root.mkdir(parents=True, exist_ok=True)
 
+parent_accepted_value = config.get(
+    "parent_accepted_dir"
+)
 parent_accepted = (
     resolve_path(
-        config["run_data_root"],
+        parent_accepted_value,
         base=ROOT,
     )
-    / f"iter_{k:03d}"
-    / "accepted"
+    if parent_accepted_value
+    else (
+        resolve_path(
+            config["run_data_root"],
+            base=ROOT,
+        )
+        / f"iter_{k:03d}"
+        / "accepted"
+    )
 )
 parent_h5_dir = parent_accepted / "mat/h5"
 
 gL_path = mtilde_dir / "g_lambda_mtilde_q1_interior_solve_rhs_total.npy"
 gM_path = mtilde_dir / "g_mu_mtilde_q1_interior_solve_rhs_total.npy"
-idx_path = mtilde_dir / "Mtilde_q1_consistent_interior_38440_indices.npy"
+idx_path = (
+    mtilde_dir
+    / (
+        "Mtilde_q1_consistent_"
+        f"interior_{expected_n}_indices.npy"
+    )
+)
 
 required = [
     state_in,
@@ -210,8 +237,15 @@ gL = np.load(gL_path).astype(np.float64)
 gM = np.load(gM_path).astype(np.float64)
 idx = np.load(idx_path).astype(np.int64)
 
-if gL.shape != (38440,) or gM.shape != (38440,) or idx.shape != (38440,):
-    raise RuntimeError(f"Unexpected gradient/index shapes: gL={gL.shape}, gM={gM.shape}, idx={idx.shape}")
+if idx.ndim != 1:
+    raise RuntimeError(f"Active indices must be 1-D: {idx.shape}")
+if gL.shape != idx.shape or gM.shape != idx.shape:
+    raise RuntimeError(
+        "Gradient/index shape mismatch: "
+        f"gL={gL.shape}, gM={gM.shape}, idx={idx.shape}"
+    )
+if np.unique(idx).size != idx.size:
+    raise RuntimeError("Duplicate active indices detected")
 
 if not np.all(np.isfinite(gL)) or not np.all(np.isfinite(gM)):
     raise RuntimeError("Non-finite gradient values.")

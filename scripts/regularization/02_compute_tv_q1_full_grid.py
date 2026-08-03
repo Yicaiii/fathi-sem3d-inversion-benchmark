@@ -374,13 +374,7 @@ def compute_smoothed_tv_q1(
 def main() -> None:
     parser = argparse.ArgumentParser()
 
-    parser.add_argument(
-        "--config",
-        default=(
-            "benchmark_fathi_tv/config/"
-            "tv_config_iter008_to_iter009.json"
-        ),
-    )
+    parser.add_argument("--config", required=True)
 
     parser.add_argument(
         "--state",
@@ -393,7 +387,8 @@ def main() -> None:
 
     parser.add_argument(
         "--label",
-        default="parent_iter008",
+        default=None,
+        help="Output branch label. Default: transition from config.",
     )
 
     parser.add_argument(
@@ -405,6 +400,7 @@ def main() -> None:
 
     config_path = resolve(args.config)
     config = load_config(config_path)
+    label = args.label or config.get("transition", "tv_parent")
 
     state_path = resolve(
         args.state or config["parent_state"]
@@ -413,7 +409,7 @@ def main() -> None:
     output_dir = (
         resolve(config["tv_transition_dir"])
         / "tv_full_grid"
-        / args.label
+        / label
     )
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -463,13 +459,26 @@ def main() -> None:
             "mu_reference_pa must be positive"
         )
 
-    x = np.linspace(-20.0, 20.0, nx)
-    y = np.linspace(-20.0, 20.0, ny)
-    z = np.linspace(0.0, -50.0, nz)
+    mesh = config["mesh"]
+    x = np.linspace(
+        float(mesh["x_min"]),
+        float(mesh["x_max"]),
+        nx,
+    )
+    y = np.linspace(
+        float(mesh["y_min"]),
+        float(mesh["y_max"]),
+        ny,
+    )
+    z = np.linspace(
+        float(mesh["z_max"]),
+        float(mesh["z_min"]),
+        nz,
+    )
 
     plan = {
         "state": str(state_path),
-        "label": args.label,
+        "label": label,
         "shape": list(expected_shape),
         "coordinates": {
             "x_min": float(x.min()),
@@ -506,7 +515,7 @@ def main() -> None:
     print("====================================")
     print()
     print(f"state = {state_path}")
-    print(f"label = {args.label}")
+    print(f"label = {label}")
     print(f"shape = {expected_shape}")
     print(
         f"elements = "
@@ -585,7 +594,7 @@ def main() -> None:
 
     values = {
         "state": str(state_path),
-        "label": args.label,
+        "label": label,
         "regularization_variable": {
             "lambda": (
                 "lambda_hat = lambda / "
@@ -623,7 +632,7 @@ def main() -> None:
     summary.append("================================")
     summary.append("")
     summary.append(f"state = {state_path}")
-    summary.append(f"label = {args.label}")
+    summary.append(f"label = {label}")
     summary.append(f"shape = {expected_shape}")
     summary.append(
         f"full nodes = {nx * ny * nz}"

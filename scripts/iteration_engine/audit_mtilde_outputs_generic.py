@@ -44,7 +44,11 @@ paths = {
     "rhs_lambda": component_rhs_dir / "full_grid_trace_RHS_total_lambda.npy",
     "rhs_mu": component_rhs_dir / "full_grid_trace_RHS_total_mu.npy",
     "rhs_coords": component_rhs_dir / "full_grid_trace_RHS_total_coords.npy",
-    "M": mtilde_solve_dir / "Mtilde_q1_consistent_interior_38440_sparse.npz",
+    "M": mtilde_solve_dir
+    / (
+        "Mtilde_q1_consistent_"
+        f"interior_{expected_n}_sparse.npz"
+    ),
     "g_lambda": mtilde_solve_dir / "g_lambda_mtilde_q1_interior_solve_rhs_total.npy",
     "g_mu": mtilde_solve_dir / "g_mu_mtilde_q1_interior_solve_rhs_total.npy",
     "g_coords": mtilde_solve_dir / "g_mtilde_q1_interior_solve_rhs_total_coords.npy",

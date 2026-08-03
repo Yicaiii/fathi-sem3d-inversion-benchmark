@@ -131,7 +131,10 @@ def main() -> None:
     }
 
     checks = {
-        "station_count": int(stations.shape[0]) == 38440,
+        "station_count": (
+            int(stations.shape[0])
+            == int(profile["receivers"]["strict_full_grid"]["count"])
+        ),
         "station_sha256": actual_hash == expected_hash,
         "mesh_partition_count": (
             len(list((workspace / "sem").glob(f"{mesh_stem}.*.h5")))

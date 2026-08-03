@@ -10,12 +10,18 @@ import h5py
 import numpy as np
 
 
-ROOT = Path.home() / "sem3d_fathi_clean"
+from scripts.fathi_benchmark.runtime_paths import (
+    repository_root,
+    resolve_path,
+    runtime_root,
+)
+
+ROOT = repository_root()
+RUNTIME = runtime_root(ROOT)
 
 
-def resolve(path: str) -> Path:
-    p = Path(path)
-    return p if p.is_absolute() else ROOT / p
+def resolve(path: str, *, runtime: bool = True) -> Path:
+    return resolve_path(path, base=RUNTIME if runtime else ROOT)
 
 
 def load_config(path: Path) -> dict:
@@ -82,19 +88,23 @@ def main() -> None:
 
     parser.add_argument(
         "--config",
-        default="benchmark_fathi_tv/config/tv_config_iter008_to_iter009.json",
+        required=True,
+        help="Generic TV config generated from an iteration context.",
     )
 
     parser.add_argument(
         "--label",
-        default="parent_iter008_gradientratio5pct",
-        help="TV branch label under mtilde_solve/",
+        default=None,
+        help="TV branch label. Default: transition from config.",
     )
 
     parser.add_argument(
         "--parent-h5-dir",
-        required=True,
-        help="Parent accepted material HDF5 directory containing Mat_0_Kappa/Mu/Density.h5",
+        default=None,
+        help=(
+            "Parent accepted material directory. "
+            "When omitted, derive it from iteration_context."
+        ),
     )
 
     parser.add_argument(
@@ -106,11 +116,42 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    config_path = resolve(args.config)
+    config_path = resolve(args.config, runtime=False)
     config = load_config(config_path)
 
+    label = args.label or config.get(
+        "transition",
+        "tv_parent",
+    )
+
     transition_dir = resolve(config["tv_transition_dir"])
-    parent_h5_dir = resolve(args.parent_h5_dir)
+
+    parent_h5_value = args.parent_h5_dir
+
+    if parent_h5_value is None:
+        context_value = config.get("iteration_context")
+
+        if context_value:
+            context_path = resolve(
+                context_value,
+                runtime=False,
+            )
+            context = load_config(context_path)
+            parent_h5_value = (
+                context.get("parent_accepted_dir")
+                or context.get("input_accepted_dir")
+            )
+
+    if parent_h5_value is None:
+        parent_h5_value = config.get("parent_h5_dir")
+
+    if parent_h5_value is None:
+        raise SystemExit(
+            "Cannot resolve parent material directory. "
+            "Provide --parent-h5-dir or iteration_context."
+        )
+
+    parent_h5_dir = resolve(parent_h5_value)
 
     nx = int(config["mesh"]["nx"])
     ny = int(config["mesh"]["ny"])
@@ -120,11 +161,11 @@ def main() -> None:
 
     active_indices_path = resolve(config["active_indices"])
 
-    tv_mtilde_dir = transition_dir / "mtilde_solve" / args.label
+    tv_mtilde_dir = transition_dir / "mtilde_solve" / label
     gL_path = tv_mtilde_dir / "g_lambda_total.npy"
     gM_path = tv_mtilde_dir / "g_mu_total.npy"
 
-    candidate_root = transition_dir / "candidates" / args.label
+    candidate_root = transition_dir / "candidates" / label
     candidate_root.mkdir(parents=True, exist_ok=True)
 
     required = [
@@ -147,12 +188,14 @@ def main() -> None:
     gL = np.load(gL_path).astype(np.float64).reshape(-1)
     gM = np.load(gM_path).astype(np.float64).reshape(-1)
 
-    if idx.shape != (38440,):
-        raise RuntimeError(f"Unexpected active index shape: {idx.shape}")
-
-    if gL.shape != (38440,) or gM.shape != (38440,):
+    if idx.ndim != 1:
         raise RuntimeError(
-            f"Unexpected TV gradient shapes: gL={gL.shape}, gM={gM.shape}"
+            f"Active indices must be one-dimensional: {idx.shape}"
+        )
+    if gL.shape != idx.shape or gM.shape != idx.shape:
+        raise RuntimeError(
+            "TV gradient/index shape mismatch: "
+            f"gL={gL.shape}, gM={gM.shape}, idx={idx.shape}"
         )
 
     if len(np.unique(idx)) != idx.size:
@@ -199,7 +242,7 @@ def main() -> None:
     for step_mpa in args.steps_mpa:
         step_pa = float(step_mpa) * 1e6
         label_step = f"{step_mpa:.2f}".replace(".", "p") + "MPa"
-        cand_name = f"tv_{args.label}_neg_mtilde_{label_step}"
+        cand_name = f"tv_{label}_neg_mtilde_{label_step}"
 
         cand_dir = candidate_root / cand_name
         cand_h5_dir = cand_dir / "mat/h5"
@@ -263,7 +306,7 @@ def main() -> None:
             density=density_new,
             parent_h5_dir=str(parent_h5_dir),
             tv_config=str(config_path),
-            tv_label=args.label,
+            tv_label=label,
             step_mpa=step_mpa,
             step_pa=step_pa,
             gradient_lambda=str(gL_path),
@@ -298,7 +341,7 @@ def main() -> None:
     payload = {
         "created": created,
         "config": str(config_path),
-        "tv_label": args.label,
+        "tv_label": label,
         "shape": list(shape),
         "active_indices": str(active_indices_path),
         "active_count": int(idx.size),
@@ -328,7 +371,7 @@ def main() -> None:
     lines.append("TV CANDIDATE GENERATION SUMMARY")
     lines.append("================================")
     lines.append("")
-    lines.append(f"tv label = {args.label}")
+    lines.append(f"tv label = {label}")
     lines.append(f"parent_h5_dir = {parent_h5_dir}")
     lines.append(f"shape = {shape}")
     lines.append(f"active count = {idx.size}")

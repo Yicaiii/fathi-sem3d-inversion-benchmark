@@ -153,8 +153,21 @@ run_data_root = (
     / f"iter_{kp1:03d}"
 )
 
-forward_trace_dir = run_data_root / "forward_dudx_mgcap_full_batches/strict_full_forward_000/traces"
-adj_base = run_data_root / "adjoint_full_grid_batches"
+strict_workspace_name = config.get(
+    "strict_forward_workspace_name",
+    "strict_full_forward_000",
+)
+adjoint_dir_name = config.get(
+    "adjoint_batches_dir_name",
+    "adjoint_full_grid_batches",
+)
+forward_trace_dir = (
+    run_data_root
+    / "forward_dudx_mgcap_full_batches"
+    / strict_workspace_name
+    / "traces"
+)
+adj_base = run_data_root / adjoint_dir_name
 
 out_dir = run_result_root / "rhs_manifests"
 out_dir.mkdir(parents=True, exist_ok=True)
@@ -239,8 +252,14 @@ for comp in ["x", "y", "z"]:
     lines.append(f"    csv = {r['csv']}")
 lines.append("")
 lines.append("Expected:")
-lines.append("  each manifest should have 38440 data rows")
-lines.append("  wc -l should show 38441 including header")
+lines.append(
+    "  each manifest should have "
+    f"{expected_n} data rows"
+)
+lines.append(
+    "  wc -l should show "
+    f"{expected_n + 1} including header"
+)
 lines.append("")
 lines.append(f"json = {json_out}")
 lines.append("")

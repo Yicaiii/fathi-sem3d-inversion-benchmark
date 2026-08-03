@@ -1441,3 +1441,105 @@ RESULT = PASS_MINI_ITER001_TO_ITER002_FORWARD_HANDOFF
 
 See `docs/MINI_ITERATION_HANDOFF.md`.
 
+<!-- TV_FINAL_SUMMARY_V1 -->
+
+## TV regularization in the generic iteration
+
+TV regularization is integrated as an optional stage inside each inversion
+transition:
+
+```text
+data RHS
+→ TV RHS
+→ total RHS
+→ Mtilde total gradient
+→ TV candidates
+→ candidate forward
+→ total objective
+→ acceptance
+```
+
+Canonical stages:
+
+```text
+regularization
+tv_candidates
+tv_acceptance_plan
+all_light_tv
+```
+
+Lightweight validation:
+
+```bash
+python -m scripts.regularization.validate_tv_lightweight
+python -m pytest -q
+```
+
+Validated boundary:
+
+```text
+TV mathematics and workflow integration: PASS
+SEM3D launched by lightweight tests: False
+accepted state mutated: False
+new full-scale non-zero-TV physical descent: Not claimed
+```
+
+Detailed documentation:
+
+```text
+docs/SEM3D_ALGORITHM_EXPLAINED_CN.md
+docs/TV_IN_ITERATION_WORKFLOW.md
+docs/FINAL_REPORT_SCOPE_CN.md
+```
+
+## Unified iteration entry point
+
+The canonical public command is:
+
+```bash
+python -m scripts.fathi_benchmark.run_iteration \
+  --config benchmark_fathi_strict/config/benchmark_config.json \
+  --iter-k 0 \
+  --stage plan
+```
+
+Both public and compatibility entry points delegate to:
+
+```text
+scripts/fathi_benchmark/iteration_pipeline.py
+```
+
+`run_iteration_full_context.py` no longer contains a second implementation.
+
+## Mtilde artifact acquisition
+
+Mtilde is generated, registered, extracted, validated, and attached to an
+iteration context through one command:
+
+```bash
+python -m scripts.mtilde.ensure_mtilde   --config <benchmark-config.json>   --context <iteration-context.json>   --execute
+```
+
+The manager prefers an existing validated full matrix when configured. If the
+full matrix is absent, it deterministically generates the structured Q1
+consistent mass matrix from `mtilde_artifact.full_grid`. It then maps the
+current forward control stations to full-grid indices and writes the active
+principal submatrix bundle:
+
+```text
+artifacts/mtilde/<artifact-id>/
+├── Mtilde.npz
+├── coords.npy
+├── active_indices.npy
+└── manifest.json
+```
+
+The matrix, coordinates, indices, hashes, ordering contract, and parent
+artifact are recorded in the manifest. The active artifact paths are written
+to both the iteration context and the benchmark configuration.
+
+The gradient task enforces Mtilde as a prerequisite.
+`scripts/fathi_benchmark/run_task3_gradient.py` first runs
+`scripts.mtilde.ensure_mtilde` for the current iteration context and only then
+delegates to `run_task3_gradient_core.py`. This applies to every caller,
+including the canonical iteration runner and direct task invocation.

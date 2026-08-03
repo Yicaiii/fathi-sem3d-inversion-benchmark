@@ -21,12 +21,34 @@ true_dir = resolve_path(
     ctx["true_observed_traces"],
     base=ROOT,
 )
-sim_dir = (
-    resolve_path(
-        ctx["output_forward_batches_dir"],
-        base=ROOT,
+import sys as _context_sys
+import json as _context_json
+from pathlib import Path as _ContextPath
+
+try:
+    _context_index = _context_sys.argv.index("--context")
+except ValueError as exc:
+    raise RuntimeError(
+        "The residual manifest requires --context"
+    ) from exc
+
+_context_path = _ContextPath(
+    _context_sys.argv[_context_index + 1]
+).expanduser()
+
+if not _context_path.is_absolute():
+    _context_path = _ContextPath.cwd() / _context_path
+
+_context_payload = _context_json.loads(
+    _context_path.resolve().read_text(
+        encoding="utf-8"
     )
-    / "strict_full_forward_000"
+)
+
+sim_dir = (
+    _ContextPath(
+        _context_payload["strict_forward_workspace"]
+    ).expanduser().resolve()
     / "traces"
 )
 
