@@ -371,6 +371,101 @@ def coordinate_index(rows: np.ndarray, decimals: int) -> dict[tuple, int]:
     return result
 
 
+def resolve_current_parent_material_contract(
+    *,
+    engine: Mapping[str, Any],
+    parent_workspace: str | Path,
+    expected_shape: tuple[int, ...],
+) -> dict[str, Any]:
+    """Resolve and preflight CURRENT parent materials from engine.material."""
+
+    material = engine.get("material")
+    if not isinstance(material, Mapping):
+        raise RuntimeError(
+            "CURRENT iteration-engine material contract must be a mapping"
+        )
+    directory_value = material.get("directory")
+    if not isinstance(directory_value, str) or not directory_value.strip():
+        raise RuntimeError(
+            "CURRENT iteration-engine material contract requires directory"
+        )
+    files = material.get("files")
+    if not isinstance(files, Mapping):
+        raise RuntimeError(
+            "CURRENT iteration-engine material contract requires files mapping"
+        )
+    for component in ("kappa", "mu"):
+        value = files.get(component)
+        if not isinstance(value, str) or not value.strip():
+            raise RuntimeError(
+                "CURRENT iteration-engine material files requires " + component
+            )
+    dataset = material.get("dataset")
+    if not isinstance(dataset, str) or not dataset.strip():
+        raise RuntimeError(
+            "CURRENT iteration-engine material contract requires dataset"
+        )
+
+    parent = Path(parent_workspace).expanduser().resolve()
+    relative_directory = Path(directory_value)
+    if relative_directory.is_absolute():
+        raise RuntimeError("CURRENT material directory must be parent-relative")
+    material_dir = (parent / relative_directory).resolve()
+    try:
+        material_dir.relative_to(parent)
+    except ValueError as exc:
+        raise RuntimeError("CURRENT material directory escapes parent workspace") from exc
+    if not material_dir.is_dir():
+        raise RuntimeError(
+            f"CURRENT parent material directory is missing: {material_dir}"
+        )
+
+    shape = tuple(int(value) for value in expected_shape)
+    if not shape or any(value <= 0 for value in shape):
+        raise RuntimeError("CURRENT expected material shape is invalid")
+    metadata: dict[str, dict[str, Any]] = {}
+    for component in ("kappa", "mu"):
+        relative_file = Path(str(files[component]))
+        if relative_file.is_absolute():
+            raise RuntimeError(
+                f"CURRENT {component} material file must be directory-relative"
+            )
+        path = (material_dir / relative_file).resolve()
+        try:
+            path.relative_to(material_dir)
+        except ValueError as exc:
+            raise RuntimeError(
+                f"CURRENT {component} material file escapes material directory"
+            ) from exc
+        if not path.is_file():
+            raise RuntimeError(
+                f"CURRENT parent {component} H5 file is missing: {path}"
+            )
+        with h5py.File(path, "r") as handle:
+            if dataset not in handle:
+                raise RuntimeError(
+                    f"CURRENT parent {component} H5 dataset is missing: "
+                    f"{dataset} in {path}"
+                )
+            actual_shape = tuple(int(value) for value in handle[dataset].shape)
+            if actual_shape != shape:
+                raise RuntimeError(
+                    f"CURRENT parent {component} H5 shape mismatch: "
+                    f"{actual_shape} != {shape}"
+                )
+            metadata[component] = {
+                "path": str(path),
+                "dataset": dataset,
+                "shape": list(actual_shape),
+                "dtype": str(handle[dataset].dtype),
+            }
+    return {
+        "directory": str(material_dir),
+        "dataset": dataset,
+        "files": metadata,
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo", default=".")
@@ -576,24 +671,12 @@ def main() -> None:
         float(domain["z_min_m"]),
         float(domain["z_max_m"]),
     )
-    material_spec = config["sem3d_mesh"]["material_spec"]
-    parent_h5 = Path(runtime["parent_workspace"]) / "mat" / "h5"
-    h5_metadata = {}
-    for label, filename in (
-        ("kappa", material_spec["kappa_file"].split("/")[-1]),
-        ("mu", material_spec["mu_file"].split("/")[-1]),
-    ):
-        path = parent_h5 / filename
-        with h5py.File(path, "r") as handle:
-            dataset = config["material_grid"]["dataset"]
-            if dataset not in handle or tuple(handle[dataset].shape) != shape:
-                raise RuntimeError(f"invalid parent material field: {path}")
-            h5_metadata[label] = {
-                "path": str(path),
-                "dataset": dataset,
-                "shape": list(handle[dataset].shape),
-                "dtype": str(handle[dataset].dtype),
-            }
+    material_preflight = resolve_current_parent_material_contract(
+        engine=engine,
+        parent_workspace=runtime["parent_workspace"],
+        expected_shape=shape,
+    )
+    h5_metadata = material_preflight["files"]
 
     gradients = {
         name: np.asarray(np.load(path), dtype=np.float64)

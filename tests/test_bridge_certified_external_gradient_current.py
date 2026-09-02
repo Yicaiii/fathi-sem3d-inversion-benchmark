@@ -7,6 +7,9 @@ from pathlib import Path
 import tempfile
 import unittest
 
+import h5py
+import numpy as np
+
 from scripts.fathi_benchmark import bridge_certified_external_gradient as bridge
 from scripts.fathi_benchmark.iteration_context import build_iteration_paths
 from scripts.fathi_benchmark.current_pipeline_contracts import (
@@ -64,11 +67,12 @@ class CurrentBridgeContractFixture:
                 "candidate_subdir": "candidates",
             },
             "material": {
-                "directory": "mat/h5",
+                "directory": "custom/material_store",
+                "dataset": "current_samples",
                 "files": {
-                    "kappa": "Mat_0_Kappa.h5",
-                    "mu": "Mat_0_Mu.h5",
-                    "density": "Mat_0_Density.h5",
+                    "kappa": "bulk_current.h5",
+                    "mu": "shear_current.h5",
+                    "density": "rho_current.h5",
                 },
             },
         }
@@ -89,12 +93,19 @@ class CurrentBridgeContractFixture:
         for name, path in self.gradient_paths.items():
             path.write_bytes(("gradient:" + name).encode("ascii"))
 
-        self.material_dir = self.paths.parent_accepted / "mat" / "h5"
+        self.material_shape = (2, 3)
+        self.material_dir = (
+            self.paths.parent_accepted / self.engine["material"]["directory"]
+        )
         self.material_dir.mkdir(parents=True)
         self.material_paths = {}
         for component, filename in self.engine["material"]["files"].items():
             path = self.material_dir / filename
-            path.write_bytes(("material:" + component).encode("ascii"))
+            with h5py.File(path, "w") as handle:
+                handle.create_dataset(
+                    self.engine["material"]["dataset"],
+                    data=np.full(self.material_shape, len(component), dtype=np.float64),
+                )
             self.material_paths[component] = path
         self.accepted_summary = self.paths.parent_accepted / "accepted_summary.json"
         _write_json(self.accepted_summary, {"result": "PASS", "iter": 1})
@@ -336,6 +347,95 @@ class CurrentBridgeContractTest(unittest.TestCase):
             "Capteur",
         ):
             self.assertNotIn(legacy, source)
+
+    def test_16_current_material_preflight_uses_engine_contract_only(self):
+        self.assertNotIn(
+            "material_spec", self.fixture.config.get("sem3d_mesh", {})
+        )
+        result = bridge.resolve_current_parent_material_contract(
+            engine=self.fixture.engine,
+            parent_workspace=self.fixture.paths.parent_accepted,
+            expected_shape=self.fixture.material_shape,
+        )
+        self.assertEqual(result["directory"], str(self.fixture.material_dir))
+        self.assertEqual(result["dataset"], "current_samples")
+        self.assertEqual(
+            Path(result["files"]["kappa"]["path"]),
+            self.fixture.material_paths["kappa"],
+        )
+        self.assertEqual(
+            Path(result["files"]["mu"]["path"]),
+            self.fixture.material_paths["mu"],
+        )
+
+    def test_17_missing_engine_material_keys_fail_clearly(self):
+        for key in ("kappa", "mu"):
+            engine = copy.deepcopy(self.fixture.engine)
+            del engine["material"]["files"][key]
+            with self.subTest(key=key), self.assertRaisesRegex(
+                RuntimeError, f"files requires {key}"
+            ):
+                bridge.resolve_current_parent_material_contract(
+                    engine=engine,
+                    parent_workspace=self.fixture.paths.parent_accepted,
+                    expected_shape=self.fixture.material_shape,
+                )
+        engine = copy.deepcopy(self.fixture.engine)
+        del engine["material"]["dataset"]
+        with self.subTest(key="dataset"), self.assertRaisesRegex(
+            RuntimeError, "requires dataset"
+        ):
+            bridge.resolve_current_parent_material_contract(
+                engine=engine,
+                parent_workspace=self.fixture.paths.parent_accepted,
+                expected_shape=self.fixture.material_shape,
+            )
+
+    def test_18_missing_directory_dataset_or_wrong_shape_fails(self):
+        engine = copy.deepcopy(self.fixture.engine)
+        engine["material"]["directory"] = "missing/materials"
+        with self.subTest(case="directory"), self.assertRaisesRegex(
+            RuntimeError, "material directory is missing"
+        ):
+            bridge.resolve_current_parent_material_contract(
+                engine=engine,
+                parent_workspace=self.fixture.paths.parent_accepted,
+                expected_shape=self.fixture.material_shape,
+            )
+
+        with h5py.File(self.fixture.material_paths["mu"], "w") as handle:
+            handle.create_dataset("wrong_dataset", data=np.zeros(self.fixture.material_shape))
+        with self.subTest(case="dataset"), self.assertRaisesRegex(
+            RuntimeError, "H5 dataset is missing"
+        ):
+            bridge.resolve_current_parent_material_contract(
+                engine=self.fixture.engine,
+                parent_workspace=self.fixture.paths.parent_accepted,
+                expected_shape=self.fixture.material_shape,
+            )
+
+        with h5py.File(self.fixture.material_paths["mu"], "w") as handle:
+            handle.create_dataset(
+                self.fixture.engine["material"]["dataset"],
+                data=np.zeros((1, 1)),
+            )
+        with self.subTest(case="shape"), self.assertRaisesRegex(
+            RuntimeError, "H5 shape mismatch"
+        ):
+            bridge.resolve_current_parent_material_contract(
+                engine=self.fixture.engine,
+                parent_workspace=self.fixture.paths.parent_accepted,
+                expected_shape=self.fixture.material_shape,
+            )
+
+    def test_19_no_legacy_material_spec_or_production_literal_dependency(self):
+        source = Path(bridge.__file__).read_text(encoding="utf-8")
+        self.assertNotIn("material_spec", source)
+        self.assertNotIn("sem3d_mesh", source)
+        self.assertNotIn("Mat_0_Kappa.h5", source)
+        self.assertNotIn("Mat_0_Mu.h5", source)
+        self.assertNotIn('"mat/h5"', source)
+        self.assertNotIn('config["material_grid"]["dataset"]', source)
 
 
 if __name__ == "__main__":
