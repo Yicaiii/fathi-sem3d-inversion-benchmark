@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "result": "PASS_PORTABLE_HISTORICAL_IMMUTABLE_OPERATOR_ASSET_MANIFEST",
+  "classification": "HISTORICAL_CERTIFIED_ASSET_REUSE",
+  "current_run": "fathi_s43_repro_p20_t052",
+  "source_run": "fathi_s43_gpu_p40_np2_apow13p8155_pml6p25_t052",
+  "assets": [
+    {
+      "asset_id": "exact_spatial_operator",
+      "classification": "HISTORICAL_CERTIFIED_ASSET_REUSE",
+      "mutable": false,
+      "source_run": "fathi_s43_gpu_p40_np2_apow13p8155_pml6p25_t052",
+      "path_base": "runtime_root",
+      "source_path": "results/fathi_s43_gpu_p40_np2_apow13p8155_pml6p25_t052/iter_000_to_iter_001/exact_spatial_operator",
+      "kind": "directory",
+      "file_count": 15,
+      "sha256": "86325bc39d5eafe47b52a52173a17471816a364fc1f961285b82254407cf68a0",
+      "content_signature_sha256": "86325bc39d5eafe47b52a52173a17471816a364fc1f961285b82254407cf68a0",
+      "current_role": "immutable SEM-GLL/H5 interpolation transpose and spatial quadrature/index operator",
+      "reuse_reason": "the CURRENT reproduction uses the identical certified S43 mesh, GLL topology, control grid, and active-index convention"
+    },
+    {
+      "asset_id": "real_s43_compact_topology",
+      "classification": "HISTORICAL_CERTIFIED_ASSET_REUSE",
+      "mutable": false,
+      "source_run": "fathi_s43_gpu_p40_np2_apow13p8155_pml6p25_t052",
+      "path_base": "runtime_root",
+      "source_path": "results/fathi_s43_gpu_p40_np2_apow13p8155_pml6p25_t052/iter_000_to_iter_001/real_s43_compact_topology",
+      "kind": "directory",
+      "file_count": 17,
+      "sha256": "492e22cd61da7dc0b3ceddeb47e3892ee8b25b22aa14c26d6f086853c10168d0",
+      "content_signature_sha256": "492e22cd61da7dc0b3ceddeb47e3892ee8b25b22aa14c26d6f086853c10168d0",
+      "current_role": "immutable solid/PML compact connectivity, coordinates, interface maps, element IDs, and PML region codes",
+      "reuse_reason": "these arrays depend only on the unchanged certified S43 mesh and partition topology, not on mutable CURRENT material/objective state"
+    },
+    {
+      "asset_id": "strict_full_grid_station_geometry",
+      "classification": "HISTORICAL_CERTIFIED_ASSET_REUSE",
+      "mutable": false,
+      "source_run": "fathi_s43_gpu_p40_np2_apow13p8155_pml6p25_t052",
+      "path_base": "runtime_root",
+      "source_path": "data/fathi_s43_gpu_p40_np2_apow13p8155_pml6p25_t052/iter_001/forward_dudx_mgcap_full_batches/strict_full_forward_000/stations.txt",
+      "kind": "file",
+      "size_bytes": 1478979,
+      "sha256": "7f6ae425886aae0703b2cf1ee66b4f069d3db3b40c71e6980690fde25cf89476",
+      "current_role": "immutable strict full-grid gradient station geometry",
+      "reuse_reason": "the strict grid is a mesh/control-geometry asset; it is not the physical receiver set and does not depend on the material iterate"
+    }
+  ]
+}

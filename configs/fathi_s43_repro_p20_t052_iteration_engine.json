@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "run_id": "fathi_s43_repro_p20_t052",
+  "historical_run_id": "fathi_s43_gpu_p40_np2_apow13p8155_pml6p25_t052",
+  "namespace": {
+    "data_run_pattern": "data/reproduction/{run_id}",
+    "results_run_pattern": "results/{run_id}",
+    "iteration_pattern": "iterations/{iteration_tag}",
+    "accepted_subdir": "accepted",
+    "transition_pattern": "{transition_id}",
+    "state_pattern": "states/{iteration_tag}_state.npz"
+  },
+  "routes": {
+    "exact_reverse": "exact_reverse",
+    "gradient_root": "corrected_gradient",
+    "material_covector": "material_covector",
+    "control_transpose": "control_interpolation_transpose",
+    "mtilde_solve": "mtilde_solve",
+    "optimizer_root": "physical_optimizer",
+    "optimizer_history": "optimizer_history",
+    "optimizer_state_pattern": "{iteration_tag}_optimizer_state.json",
+    "line_search_root": "external_armijo",
+    "candidate_subdir": "candidates"
+  },
+  "material": {
+    "directory": "mat/h5",
+    "dataset": "samples",
+    "files": {
+      "kappa": "Mat_0_Kappa.h5",
+      "mu": "Mat_0_Mu.h5",
+      "density": "Mat_0_Density.h5"
+    }
+  },
+  "gradient_contract": {
+    "route": [
+      "exact_discrete_reverse",
+      "certified_material_covector",
+      "control_interpolation_transpose",
+      "active_control_restriction",
+      "mtilde_solve",
+      "corrected_riesz_gradient"
+    ],
+    "metric": "Mtilde",
+    "metric_inner_product": "a.T @ Mtilde @ b",
+    "legacy_component_rhs_route": "superseded"
+  },
+  "optimizer": {
+    "memory_limit": 15,
+    "curvature_relative_tolerance": 1e-12,
+    "metric": "Mtilde",
+    "metric_inner_product": "a.T @ Mtilde @ b",
+    "curvature_formula": "s.T @ Mtilde @ y",
+    "fixed_reproduction_scaling": {
+      "m_ref_pa": 80000000.0,
+      "J_ref": 3.78991998304714295e-08,
+      "J_ref_iteration": 0,
+      "provenance": "frozen certified external objective at reproduction initialization"
+    },
+    "lambda_bias": {
+      "equation": "paper Eq.25",
+      "norm": "Euclidean L2",
+      "iteration_source": "parent_iteration"
+    },
+    "normalization": "none"
+  },
+  "external_armijo": {
+    "c1": 0.0001,
+    "rho": 0.5,
+    "alpha0": 1.0,
+    "maximum_backtracks": 12,
+    "objective": "certified external physical objective",
+    "reuse_true_receiver": true,
+    "checkpoint_resume": true,
+    "normalization": "none"
+  },
+  "immutable_operator_assets": {
+    "classification": "HISTORICAL_CERTIFIED_ASSET_REUSE",
+    "mutable": false,
+    "manifest": "configs/fathi_s43_repro_p20_t052_immutable_assets.json",
+    "required_asset_ids": [
+      "exact_spatial_operator",
+      "real_s43_compact_topology",
+      "strict_full_grid_station_geometry"
+    ]
+  }
+}
