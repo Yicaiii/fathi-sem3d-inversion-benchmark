@@ -54,6 +54,12 @@ from scripts.fathi_benchmark.physical_space_optimizer import (
     lambda_bias_weight,
     physical_lbfgs_direction,
 )
+from scripts.fathi_benchmark.current_pipeline_contracts import (
+    verify_artifact_record,
+)
+from scripts.fathi_benchmark.current_pipeline_artifacts import (
+    persist_optimizer_direction,
+)
 
 
 def _read_json(path: str | Path) -> dict[str, Any]:
@@ -72,11 +78,13 @@ def _check_identity(
         str(manifest.get("run_id", "")),
         int(manifest.get("parent_iteration", -1)),
         int(manifest.get("child_iteration", -1)),
+        str(manifest.get("transition", "")),
     )
     wanted = (
         expected.run_id,
         expected.parent_iteration,
         expected.child_iteration,
+        expected.transition_id,
     )
     if actual != wanted:
         raise ValueError(f"{name} transition identity mismatch: {actual} != {wanted}")
@@ -171,7 +179,22 @@ class GenericIterationRunner:
 
         _check_identity(optimizer_manifest, self.paths, name="optimizer manifest")
         parent = self.paths.identity.parent_iteration
-        gradient_spec = optimizer_manifest.get("gradient")
+        gradient_record = optimizer_manifest.get("registered_gradient_manifest")
+        if isinstance(gradient_record, Mapping):
+            gradient_path = verify_artifact_record(
+                self.repository_root,
+                gradient_record,
+                label="registered gradient manifest",
+                expected_path=self.paths.gradient_root / "registered_gradient.json",
+            )
+            gradient_spec = _read_json(gradient_path)
+        elif (
+            optimizer_manifest.get("contract_classification")
+            == "SYNTHETIC_TEST_FIXTURE"
+        ):
+            gradient_spec = optimizer_manifest.get("gradient")
+        else:
+            gradient_spec = None
         if parent > 0:
             gradient_status = history_build_status(
                 {
@@ -254,6 +277,21 @@ class GenericIterationRunner:
             h0_or_history_scale=scale,
             lambda_bias_weight=bias_weight,
             slope=float(slope),
+        )
+
+    def persist_optimizer_direction(
+        self,
+        optimizer_manifest: Mapping[str, Any],
+        result: OptimizerDirectionResult,
+    ) -> Path:
+        """Persist the existing physical L-BFGS/Eq.25 output without recomputing."""
+
+        return persist_optimizer_direction(
+            repo=self.repository_root,
+            paths=self.paths,
+            material_config=self.engine_config["material"],
+            optimizer_manifest=optimizer_manifest,
+            direction_result=result,
         )
 
     def parent_lambda_bias_weight(self) -> float:
@@ -408,6 +446,9 @@ class GenericIterationRunner:
             paths=self.paths,
             parent_objective=float(line_search_inputs["parent_objective"]),
             slope=float(line_search_inputs["slope"]),
+            parent_accepted_artifact=line_search_inputs[
+                "parent_accepted_artifact"
+            ],
             gradient_artifact=line_search_inputs["gradient_artifact"],
             direction_artifact=line_search_inputs["direction_artifact"],
             true_receiver_artifact=line_search_inputs["true_receiver_artifact"],

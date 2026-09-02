@@ -1,4 +1,4 @@
-"""User-facing, iteration-generic runner for the certified Fathi workflow."""
+"""HISTORICAL_ONLY runner for the pre-CURRENT certified Fathi workflow."""
 
 from __future__ import annotations
 
@@ -13,6 +13,17 @@ from scripts.fathi_benchmark.line_search_contract import (
     candidate_name_from_step_mpa,
 )
 from scripts.fathi_benchmark.runtime_paths import iteration_runtime_paths, resolve_path
+from scripts.fathi_benchmark.current_pipeline_contracts import CURRENT_RUN_ID
+
+
+BLOCKED_CURRENT_RESULT = "BLOCKED_HISTORICAL_ITERATION_RUNNER_FOR_CURRENT"
+
+
+def guard_historical_runner(run_id: str) -> None:
+    """Refuse CURRENT before any historical child process can be dispatched."""
+
+    if str(run_id) == CURRENT_RUN_ID:
+        raise RuntimeError(BLOCKED_CURRENT_RESULT)
 
 
 STAGES = (
@@ -109,6 +120,7 @@ def main() -> None:
     )
     config_path = resolve_path(args.config, base=root)
     config = json.loads(config_path.read_text(encoding="utf-8"))
+    guard_historical_runner(str(config.get("benchmark_name", "")))
     runtime = iteration_runtime_paths(config, args.iter_k, repo_root=root)
     run = config_path.stem
     transition_root = Path(runtime["transition_root"])
@@ -327,6 +339,7 @@ def main() -> None:
                 str(search_dir),
                 "--source",
                 args.source or "certified_iteration/search_direction",
+                "--historical-legacy",
             ],
             root,
         )

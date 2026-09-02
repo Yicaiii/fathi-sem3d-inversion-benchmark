@@ -37,6 +37,11 @@ from scripts.fathi_benchmark.runtime_paths import (
     iteration_runtime_paths,
     resolve_path,
 )
+from scripts.fathi_benchmark.current_pipeline_contracts import (
+    accepted_model_result,
+    exact_reverse_result,
+    retained_primal_result,
+)
 
 
 GRADIENT_NAMES = (
@@ -81,7 +86,7 @@ def _preflight_result(iteration: int) -> str:
 
 
 def _reverse_result(iteration: int) -> str:
-    return f"PASS_ITER{int(iteration):03d}_EXACT_REVERSE_MATERIAL_COVECTOR"
+    return exact_reverse_result(iteration)
 
 
 def _require(condition: bool, message: str) -> None:
@@ -212,9 +217,27 @@ def build_runtime(args: argparse.Namespace) -> dict[str, Any]:
     )
 
     primal_root = paths.exact_reverse / "primal_forward"
-    current_path = _resolve(repo, args.current_trace)
-    true_path = _resolve(repo, args.true_trace)
-    retained_dir = _resolve(repo, args.retained_primal_dir)
+    primal_summary_path = (
+        _resolve(repo, args.primal_summary)
+        if args.primal_summary
+        else primal_root / "summary.json"
+    )
+    primal = _json(primal_summary_path)
+    current_path = (
+        _resolve(repo, args.current_trace)
+        if args.current_trace
+        else _recorded_path(repo, primal["current_external_receiver"]["path"])
+    )
+    true_path = (
+        _resolve(repo, args.true_trace)
+        if args.true_trace
+        else _recorded_path(repo, primal["true_external_receiver"]["path"])
+    )
+    retained_dir = (
+        _resolve(repo, args.retained_primal_dir)
+        if args.retained_primal_dir
+        else _recorded_path(repo, primal["retained_primal"]["directory"])
+    )
     output_dir = (
         _resolve(repo, args.output_dir)
         if args.output_dir
@@ -241,12 +264,6 @@ def build_runtime(args: argparse.Namespace) -> dict[str, Any]:
     )
     _require(_below(output_dir, paths.transition_root), "output escapes transition")
 
-    primal_summary_path = (
-        _resolve(repo, args.primal_summary)
-        if args.primal_summary
-        else primal_root / "summary.json"
-    )
-    primal = _json(primal_summary_path)
     expected_identity = (
         run_id,
         int(args.iter_k),
@@ -260,7 +277,10 @@ def build_runtime(args: argparse.Namespace) -> dict[str, Any]:
         str(primal.get("transition", "")),
     )
     _require(actual_identity == expected_identity, "primal summary identity mismatch")
-    _require(str(primal.get("result", "")).startswith("PASS_"), "primal is not PASS")
+    _require(
+        primal.get("result") == retained_primal_result(args.iter_k),
+        "primal result contract mismatch",
+    )
 
     accepted_summary_path = (
         _resolve(repo, args.accepted_summary)
@@ -270,8 +290,16 @@ def build_runtime(args: argparse.Namespace) -> dict[str, Any]:
     accepted = _json(accepted_summary_path)
     _require(int(accepted.get("iter", -1)) == args.iter_k, "accepted iter mismatch")
     _require(str(accepted.get("run", "")) == run_id, "accepted run mismatch")
-    _require(str(accepted.get("result", "")).startswith("PASS_"), "accepted not PASS")
-    trial_path = _recorded_path(repo, accepted["external_armijo_trial"])
+    _require(
+        accepted.get("result") == accepted_model_result(args.iter_k),
+        "accepted parent result contract mismatch",
+    )
+    trial_record = accepted.get("candidate_objective_trial")
+    trial_path = (
+        _recorded_path(repo, trial_record["path"])
+        if isinstance(trial_record, Mapping)
+        else _recorded_path(repo, accepted["external_armijo_trial"])
+    )
     trial = _json(trial_path)
     _require(trial.get("accepted") is True, "Armijo trial is not accepted")
     if args.iter_k > 0:
@@ -280,10 +308,15 @@ def build_runtime(args: argparse.Namespace) -> dict[str, Any]:
             _below(trial_path, Path(prior["transition_root"])),
             "accepted trial is outside predecessor transition",
         )
+    accepted_receiver = accepted.get("accepted_external_receiver")
     accepted_trace = (
         _resolve(repo, args.accepted_trace)
         if args.accepted_trace
-        else _recorded_path(repo, trial["candidate_external_receiver"])
+        else (
+            _recorded_path(repo, accepted_receiver["path"])
+            if isinstance(accepted_receiver, Mapping)
+            else _recorded_path(repo, trial["candidate_external_receiver"])
+        )
     )
 
     material_dir = paths.parent_accepted / "mat" / "h5"
@@ -345,20 +378,35 @@ def build_runtime(args: argparse.Namespace) -> dict[str, Any]:
         "current trace hash differs from primal summary",
     )
     _require(
-        primal["current_external_receiver"].get("bitwise_equal_to_accepted_alpha1")
+        primal["current_external_receiver"].get(
+            "bitwise_equal_to_accepted_parent",
+            primal["current_external_receiver"].get(
+                "bitwise_equal_to_accepted_alpha1"
+            ),
+        )
         is True,
         "primal summary accepted-trace bitwise gate is false",
     )
     _require(
         current_hash == accepted_hash
         == str(accepted["external_receiver_sha256"])
-        == str(trial["candidate_external_sha256"]),
+        == str(
+            trial.get(
+                "candidate_external_sha256",
+                trial.get("candidate_receiver", {}).get("sha256", ""),
+            )
+        ),
         "current trace is not bitwise equal to accepted trace",
     )
     _require(
         true_hash == str(primal["true_external_receiver"]["sha256"])
         == str(accepted["true_external_sha256"])
-        == str(trial["true_external_sha256"]),
+        == str(
+            trial.get(
+                "true_external_sha256",
+                trial.get("true_receiver", {}).get("sha256", ""),
+            )
+        ),
         "TRUE trace hash differs from frozen provenance",
     )
     _require(
@@ -381,11 +429,18 @@ def build_runtime(args: argparse.Namespace) -> dict[str, Any]:
     objective = 0.5 * float(
         np.sum(objective_weights[:, None, None] * residual * residual)
     )
+    primal_objective = primal["objective"]
+    recorded_j = primal_objective.get(
+        "J_external", primal_objective.get("J1")
+    )
+    accepted_j = primal_objective.get(
+        "accepted_J", primal_objective.get("accepted_J1")
+    )
     _require(
-        objective == float(primal["objective"]["J1"])
-        == float(primal["objective"]["accepted_J1"])
-        and primal["objective"].get("bitwise_equal") is True,
-        "J1 is not reproduced bitwise",
+        objective == float(recorded_j)
+        == float(accepted_j)
+        and primal_objective.get("bitwise_equal") is True,
+        "parent objective is not reproduced bitwise",
     )
 
     receiver_nodes = np.asarray(driver.receiver_nodes, dtype=np.int64)
@@ -557,10 +612,10 @@ def main() -> None:
     parser.add_argument("--config", required=True)
     parser.add_argument("--engine-config")
     parser.add_argument("--iter-k", type=int, required=True)
-    parser.add_argument("--current-trace", required=True)
-    parser.add_argument("--true-trace", required=True)
+    parser.add_argument("--current-trace")
+    parser.add_argument("--true-trace")
     parser.add_argument("--accepted-trace")
-    parser.add_argument("--retained-primal-dir", required=True)
+    parser.add_argument("--retained-primal-dir")
     parser.add_argument("--primal-summary")
     parser.add_argument("--accepted-summary")
     parser.add_argument("--driver-root")

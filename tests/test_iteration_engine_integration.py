@@ -77,8 +77,13 @@ class IterationEngineIntegrationTest(unittest.TestCase):
                 "run_id": self.engine["run_id"],
                 "parent_iteration": 1,
                 "child_iteration": 2,
+                "transition": "iter_001_to_iter_002",
                 "parent_objective": dynamic_parent_objective,
                 "slope": -0.5,
+                "parent_accepted_artifact": {
+                    "path": "parent",
+                    "sha256": "parent-hash",
+                },
                 "gradient_artifact": {"path": "g", "sha256": "g-hash"},
                 "direction_artifact": {"path": "p", "sha256": "p-hash"},
                 "true_receiver_artifact": {
@@ -123,6 +128,8 @@ class IterationEngineIntegrationTest(unittest.TestCase):
                     "run_id": self.engine["run_id"],
                     "parent_iteration": 0,
                     "child_iteration": 1,
+                    "transition": "iter_000_to_iter_001",
+                    "contract_classification": "SYNTHETIC_TEST_FIXTURE",
                     "gradient": {
                         "lambda": self._write_array(
                             root, "optimizer_g_lambda.npy", [1.0, 0.5]
@@ -159,6 +166,7 @@ class IterationEngineIntegrationTest(unittest.TestCase):
                     "run_id": self.engine["run_id"],
                     "parent_iteration": 1,
                     "child_iteration": 2,
+                    "transition": "iter_001_to_iter_002",
                 }
             )
         self.assertEqual(caught.exception.status, waiting_for_gradient_status(1))
@@ -352,6 +360,8 @@ class IterationEngineIntegrationTest(unittest.TestCase):
             "run_id": self.engine["run_id"],
             "parent_iteration": 1,
             "child_iteration": 2,
+            "transition": "iter_001_to_iter_002",
+            "contract_classification": "SYNTHETIC_TEST_FIXTURE",
             "gradient": request["child_gradient"],
         }
 

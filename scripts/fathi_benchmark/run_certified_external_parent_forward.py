@@ -25,9 +25,45 @@ from scripts.fathi_benchmark.runtime_paths import (
     iteration_runtime_paths,
     resolve_path,
 )
+from scripts.fathi_benchmark.current_pipeline_contracts import (
+    accepted_model_result,
+    artifact_record,
+    retained_primal_result,
+)
+from scripts.fathi_benchmark.iteration_context import build_iteration_paths
+from scripts.fathi_benchmark.path_consistency import (
+    validate_path_config_consistency,
+)
 
 
-PASS_RESULT = "PASS_CERTIFIED_PARENT_EXTERNAL_FORWARD"
+HISTORICAL_PASS_RESULT = "PASS_CERTIFIED_PARENT_EXTERNAL_FORWARD"
+
+
+def current_parent_forward_contract(paths) -> dict:
+    """Return the exact schema/path contract without executing a forward."""
+
+    iteration = paths.identity.parent_iteration
+    return {
+        "schema_version": 1,
+        "result": retained_primal_result(iteration),
+        "run_id": paths.identity.run_id,
+        "parent_iteration": iteration,
+        "child_iteration": paths.identity.child_iteration,
+        "transition": paths.identity.transition_id,
+        "output_path": str(paths.exact_reverse / "primal_forward"),
+        "current_receiver_filename": "current_external_receiver.npy",
+        "summary_filename": "summary.json",
+        "required_summary_fields": [
+            "material_sha256",
+            "driver_signature_sha256",
+            "forward_run_signature_sha256",
+            "current_external_receiver",
+            "true_external_receiver",
+            "objective",
+            "retained_primal",
+            "immutable_operator_identity",
+        ],
+    }
 
 
 def atomic_json(path: Path, payload: dict) -> None:
@@ -61,7 +97,7 @@ def expected_parent_objective(
 
     path = Path(runtime["parent_workspace"]) / "accepted_summary.json"
     payload = json.loads(path.read_text(encoding="utf-8"))
-    if payload.get("result") != "PASS_CERTIFIED_ACCEPTED_MODEL":
+    if payload.get("result") != accepted_model_result(iteration):
         raise RuntimeError(f"parent accepted summary is not certified PASS: {path}")
     if int(payload["iter"]) != int(iteration):
         raise RuntimeError("parent accepted-summary iteration mismatch")
@@ -100,7 +136,28 @@ def main() -> None:
     config_path = resolve_path(args.config, base=repo)
     config = json.loads(config_path.read_text(encoding="utf-8"))
     runtime = iteration_runtime_paths(config, args.iter_k, repo_root=repo)
-    run = config_path.stem
+    run = str(config["benchmark_name"])
+    engine_path = (
+        repo / "configs" / f"{run}_iteration_engine.json"
+    ).resolve()
+    engine = json.loads(engine_path.read_text(encoding="utf-8"))
+    validate_path_config_consistency(
+        config,
+        engine,
+        repository_root=repo,
+    )
+    paths = build_iteration_paths(
+        engine,
+        args.iter_k,
+        child_iteration=args.iter_k + 1,
+        repository_root=repo,
+        runtime_root=runtime["runtime_root"],
+    )
+    if paths.transition_root != Path(runtime["transition_root"]):
+        raise RuntimeError("runtime/iteration-engine transition path mismatch")
+    if paths.parent_accepted != Path(runtime["parent_workspace"]):
+        raise RuntimeError("runtime/iteration-engine parent path mismatch")
+    pass_result = retained_primal_result(args.iter_k)
     reference_path = (
         resolve_path(args.reference_manifest, base=repo)
         if args.reference_manifest
@@ -111,18 +168,14 @@ def main() -> None:
     output_dir = (
         resolve_path(args.output_dir, base=repo)
         if args.output_dir
-        else Path(runtime["transition_root"])
-        / "certified_iteration"
-        / "parent_forward"
+        else paths.exact_reverse / "primal_forward"
     ).resolve()
+    if output_dir != (paths.exact_reverse / "primal_forward").resolve():
+        raise RuntimeError("CURRENT parent-forward output is not canonical")
     material_dir = Path(runtime["parent_workspace"]) / "mat" / "h5"
     material_files = {
-        name: material_dir / name
-        for name in (
-            "Mat_0_Kappa.h5",
-            "Mat_0_Mu.h5",
-            "Mat_0_Density.h5",
-        )
+        component: material_dir / str(engine["material"]["files"][component])
+        for component in ("kappa", "mu", "density")
     }
     missing = [str(path) for path in material_files.values() if not path.is_file()]
     if missing:
@@ -132,7 +185,7 @@ def main() -> None:
     initial_density = (
         Path(initial["parent_workspace"]) / "mat" / "h5" / "Mat_0_Density.h5"
     )
-    if sha256_file(material_files["Mat_0_Density.h5"]) != sha256_file(
+    if sha256_file(material_files["density"]) != sha256_file(
         initial_density
     ):
         raise RuntimeError("parent density differs from frozen coupled-mass density")
@@ -201,13 +254,13 @@ def main() -> None:
     if summary_path.is_file():
         existing = json.loads(summary_path.read_text(encoding="utf-8"))
         if (
-            existing.get("result") == PASS_RESULT
+            existing.get("result") == pass_result
             and existing.get("input_signature_sha256") == signature
             and current_path.is_file()
             and existing["files"]["current_external_sha256"]
             == sha256_file(current_path)
         ):
-            print(f"RESULT = {PASS_RESULT}")
+            print(f"RESULT = {pass_result}")
             print(f"OUTPUT = {output_dir}")
             print("IDEMPOTENT_REUSE = true")
             return
@@ -237,6 +290,24 @@ def main() -> None:
         abs(expected_j), np.finfo(np.float64).tiny
     )
     retained_last = retained_dir / f"primal_{sample_count:06d}.npz"
+    accepted_receiver_hash = None
+    if int(args.iter_k) > 0:
+        accepted_payload = json.loads(expected_j_source.read_text(encoding="utf-8"))
+        accepted_receiver = accepted_payload.get("accepted_external_receiver")
+        if isinstance(accepted_receiver, dict):
+            accepted_receiver_path = manifest_asset(
+                repo, str(accepted_receiver["path"])
+            )
+        else:
+            trial_path = manifest_asset(
+                repo, str(accepted_payload["external_armijo_trial"])
+            )
+            trial = json.loads(trial_path.read_text(encoding="utf-8"))
+            accepted_receiver_path = manifest_asset(
+                repo, str(trial["candidate_external_receiver"])
+            )
+        accepted_receiver_hash = sha256_file(accepted_receiver_path)
+    current_receiver_hash = sha256_file(current_path)
     gates = {
         "reference_manifest_pass": True,
         "reference_true_external_hash": True,
@@ -245,7 +316,11 @@ def main() -> None:
         "sample_shape": True,
         "density_matches_frozen_coupled_mass": True,
         "retained_endpoint_present": retained_last.is_file(),
-        "objective_relative_error_le_1e-12": relative <= 1.0e-12,
+        "objective_bitwise_equal_to_accepted": objective == expected_j,
+        "current_receiver_bitwise_equal_to_accepted": (
+            accepted_receiver_hash is None
+            or accepted_receiver_hash == current_receiver_hash
+        ),
         "all_finite": bool(np.all(np.isfinite(residual))),
     }
     if not all(gates.values()):
@@ -254,7 +329,10 @@ def main() -> None:
 
     summary = {
         "schema_version": 1,
-        "result": PASS_RESULT,
+        "result": pass_result,
+        "run_id": run,
+        "parent_iteration": int(args.iter_k),
+        "child_iteration": int(args.iter_k) + 1,
         "iteration": int(args.iter_k),
         "transition": runtime["transition"],
         "input_signature_sha256": signature,
@@ -262,9 +340,22 @@ def main() -> None:
         "reference_manifest_sha256": sha256_file(reference_path),
         "material_dir": str(material_dir.resolve()),
         "material_sha256": material_hashes,
+        "runtime_config": artifact_record(config_path, repo=repo),
+        "iteration_engine_config": artifact_record(engine_path, repo=repo),
+        "accepted_parent_summary": (
+            None
+            if int(args.iter_k) == 0
+            else artifact_record(expected_j_source, repo=repo)
+        ),
+        "immutable_operator_identity": {
+            "reference_manifest_sha256": sha256_file(reference_path),
+            "driver_signature_sha256": driver.signature,
+            "receiver_operator_sha256": receiver_hash,
+        },
         "objective": {
             "J_external": objective,
-            "expected_parent_J": expected_j,
+            "accepted_J": expected_j,
+            "bitwise_equal": objective == expected_j,
             "relative_error": relative,
             "expected_source": str(expected_j_source),
             "expected_source_result": expected_j_result,
@@ -277,13 +368,32 @@ def main() -> None:
             "residual_l2": float(np.linalg.norm(residual.reshape(-1))),
         },
         "external_forward": run_summary,
-        "files": {
-            "current_external": str(current_path),
-            "current_external_sha256": sha256_file(current_path),
-            "true_external": str(driver.paths["true_external"]),
-            "true_external_sha256": sha256_file(driver.paths["true_external"]),
-            "checkpoint": str(checkpoint_path),
-            "retained_primal": str(retained_dir),
+        "driver_signature_sha256": driver.signature,
+        "forward_run_signature_sha256": str(
+            run_summary.get("signature_sha256", signature)
+        ),
+        "current_external_receiver": {
+            **artifact_record(current_path, repo=repo),
+            "bitwise_equal_to_accepted_parent": gates[
+                "current_receiver_bitwise_equal_to_accepted"
+            ],
+        },
+        "true_external_receiver": {
+            **artifact_record(driver.paths["true_external"], repo=repo),
+            "rerun": False,
+        },
+        "retained_primal": {
+            "directory": str(retained_dir),
+            "positions": [
+                int(path.stem.split("_")[-1])
+                for path in sorted(retained_dir.glob("primal_*.npz"))
+            ],
+            "sha256": {
+                path.name: sha256_file(path)
+                for path in sorted(retained_dir.glob("primal_*.npz"))
+            },
+            "latest_resume_checkpoint": str(checkpoint_path),
+            "latest_resume_checkpoint_sha256": sha256_file(checkpoint_path),
         },
         "receiver_operator_sha256": receiver_hash,
         "gates": gates,
@@ -291,7 +401,7 @@ def main() -> None:
         "full_external_forwards": 1,
     }
     atomic_json(summary_path, summary)
-    print(f"RESULT = {PASS_RESULT}")
+    print(f"RESULT = {pass_result}")
     print(f"J_EXTERNAL = {objective:.17e}")
     print(f"OBJECTIVE_RELATIVE_ERROR = {relative:.17e}")
     print(f"OUTPUT = {output_dir}")

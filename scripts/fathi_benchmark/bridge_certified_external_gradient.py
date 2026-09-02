@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+from typing import Any, Mapping
 
 import h5py
 import numpy as np
@@ -30,17 +31,328 @@ from scripts.fathi_benchmark.certified_gradient_bridge_utils import (
     relative_error,
     trilinear_transpose,
 )
+from scripts.fathi_benchmark.immutable_assets import (
+    validate_immutable_asset_manifest,
+)
+from scripts.fathi_benchmark.iteration_context import (
+    IterationPaths,
+    build_iteration_paths,
+)
 from scripts.fathi_benchmark.runtime_paths import (
     iteration_runtime_paths,
     resolve_path,
 )
+from scripts.fathi_benchmark.current_pipeline_contracts import (
+    accepted_model_result,
+    exact_reverse_result,
+    gradient_bridge_result,
+    retained_primal_result,
+)
 
 
 PASS_RESULT = "PASS_CERTIFIED_EXTERNAL_OPTIMIZER_BRIDGE"
-GENERIC_REVERSE_PASS = "PASS_CERTIFIED_EXTERNAL_EXACT_REVERSE"
 HISTORICAL_REVERSE_PASS = (
     "PASS_STAGE5O_EXTERNAL_PHYSICAL_EXACT_ADJOINT_CERTIFICATION"
 )
+CURRENT_GRADIENT_NAMES = (
+    "solid_lambda",
+    "solid_mu",
+    "pml_lambda",
+    "pml_mu",
+)
+CURRENT_REVERSE_GATES = (
+    "all_reverse_transitions_completed",
+    "next_transition_is_minus_one",
+    "reverse_remained_finite",
+    "retained_replay_endpoints_verified",
+    "exact_physical_receiver_transpose_used",
+    "fixed_dt_trapezoidal_residual_weighting_used",
+    "certified_material_vjp_used",
+    "certified_adjoint_step_used",
+)
+
+
+def current_reverse_result(iteration: int) -> str:
+    return exact_reverse_result(iteration)
+
+
+def current_gradient_paths(reverse_dir: Path) -> dict[str, Path]:
+    return {
+        name: reverse_dir / f"gradient_{name}.npy"
+        for name in CURRENT_GRADIENT_NAMES
+    }
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise RuntimeError(f"JSON manifest must contain an object: {path}")
+    return value
+
+
+def _recorded_path(repo: Path, record: Mapping[str, Any]) -> Path:
+    value = record.get("resolved_path") or record.get("path")
+    if not value:
+        raise RuntimeError("provenance record has no path")
+    return resolve_path(str(value), base=repo)
+
+
+def _manifest_path(repo: Path, value: object) -> Path:
+    if not value:
+        raise RuntimeError("provenance manifest path is absent")
+    return resolve_path(str(value), base=repo)
+
+
+def _verify_file_record(
+    repo: Path,
+    record: Mapping[str, Any],
+    *,
+    label: str,
+    expected_path: Path | None = None,
+) -> Path:
+    path = _recorded_path(repo, record)
+    if expected_path is not None and path != expected_path.resolve():
+        raise RuntimeError(f"{label} provenance path mismatch")
+    if not path.is_file():
+        raise RuntimeError(f"{label} provenance file is missing: {path}")
+    expected_hash = str(record.get("sha256", ""))
+    if not expected_hash or sha256_file(path) != expected_hash:
+        raise RuntimeError(f"{label} provenance SHA-256 mismatch")
+    return path
+
+
+def _asset_paths(
+    manifest: Mapping[str, Any], *, repo: Path, runtime_root: Path
+) -> dict[str, Path]:
+    bases = {"repository_root": repo, "runtime_root": runtime_root}
+    result: dict[str, Path] = {}
+    for asset in manifest["assets"]:
+        base_name = str(asset["path_base"])
+        if base_name not in bases:
+            raise RuntimeError(f"unsupported immutable asset base: {base_name}")
+        result[str(asset["asset_id"])] = (
+            bases[base_name] / str(asset["source_path"])
+        ).resolve()
+    return result
+
+
+def validate_current_reverse_contract(
+    *,
+    repo: Path,
+    config_path: Path,
+    config: Mapping[str, Any],
+    engine_path: Path,
+    engine: Mapping[str, Any],
+    paths: IterationPaths,
+    iteration: int,
+    reverse_dir: Path,
+    reverse_summary: Mapping[str, Any],
+    operator_dir: Path,
+    topology_dir: Path,
+    operator_content_signature: str,
+    topology_content_signature: str,
+) -> dict[str, Any]:
+    """Validate only the CURRENT reverse-to-bridge interface and provenance."""
+
+    expected_result = current_reverse_result(iteration)
+    if reverse_summary.get("result") != expected_result:
+        raise RuntimeError(
+            "CURRENT reverse result mismatch: "
+            f"{reverse_summary.get('result')} != {expected_result}"
+        )
+    if int(reverse_summary.get("iteration", -1)) != int(iteration):
+        raise RuntimeError("CURRENT reverse iteration mismatch")
+    if reverse_summary.get("transition") != paths.identity.transition_id:
+        raise RuntimeError("CURRENT reverse transition mismatch")
+    expected_samples = int(config["forward_operator"]["expected_sample_count"])
+    reverse = reverse_summary.get("reverse", {})
+    if int(reverse.get("steps", -1)) != expected_samples:
+        raise RuntimeError("CURRENT reverse step count mismatch")
+    if int(reverse.get("next_transition", 0)) != -1:
+        raise RuntimeError("CURRENT reverse did not finish at transition -1")
+    if reverse.get("finite") is not True:
+        raise RuntimeError("CURRENT reverse finite gate is false")
+    gates = reverse_summary.get("gates", {})
+    failed = [name for name in CURRENT_REVERSE_GATES if gates.get(name) is not True]
+    if failed:
+        raise RuntimeError("CURRENT reverse gates failed: " + ", ".join(failed))
+
+    canonical_reverse = (paths.exact_reverse / "production_reverse").resolve()
+    if reverse_dir.resolve() != canonical_reverse:
+        raise RuntimeError("CURRENT material covector is outside canonical reverse path")
+    gradient_paths = current_gradient_paths(canonical_reverse)
+    output_hashes = reverse_summary.get("output_hashes", {}).get("gradients", {})
+    gradient_metadata = reverse_summary.get("gradient", {})
+    for name, path in gradient_paths.items():
+        if not path.is_file():
+            raise RuntimeError(f"missing CURRENT gradient file: {path.name}")
+        actual = sha256_file(path)
+        if actual != str(output_hashes.get(name, "")):
+            raise RuntimeError(f"CURRENT gradient output SHA-256 mismatch: {name}")
+        metadata = gradient_metadata.get(name, {})
+        if actual != str(metadata.get("sha256", "")):
+            raise RuntimeError(f"CURRENT gradient metadata SHA-256 mismatch: {name}")
+        if metadata.get("finite") is not True:
+            raise RuntimeError(f"CURRENT gradient finite gate is false: {name}")
+        if _manifest_path(repo, metadata.get("path")) != path.resolve():
+            raise RuntimeError(f"CURRENT gradient metadata path mismatch: {name}")
+
+    canonical_primal = (paths.exact_reverse / "primal_forward" / "summary.json").resolve()
+    for key in ("reference_manifest", "parent_forward_summary"):
+        if _manifest_path(repo, reverse_summary.get(key)) != canonical_primal:
+            raise RuntimeError(f"CURRENT reverse {key} is not canonical primal summary")
+    input_hashes = reverse_summary.get("input_hashes", {})
+    _verify_file_record(
+        repo,
+        input_hashes.get("primal_forward_summary", {}),
+        label="canonical primal-forward summary",
+        expected_path=canonical_primal,
+    )
+    primal = _read_json(canonical_primal)
+    primal_identity = (
+        primal.get("run_id"),
+        int(primal.get("parent_iteration", -1)),
+        int(primal.get("child_iteration", -1)),
+        primal.get("transition"),
+    )
+    expected_identity = (
+        paths.identity.run_id,
+        paths.identity.parent_iteration,
+        paths.identity.child_iteration,
+        paths.identity.transition_id,
+    )
+    if (
+        primal_identity != expected_identity
+        or primal.get("result") != retained_primal_result(iteration)
+    ):
+        raise RuntimeError("canonical primal-forward identity/result mismatch")
+
+    _verify_file_record(
+        repo,
+        input_hashes.get("runtime_config", {}),
+        label="runtime config",
+        expected_path=config_path,
+    )
+    _verify_file_record(
+        repo,
+        input_hashes.get("iteration_engine_config", {}),
+        label="iteration-engine config",
+        expected_path=engine_path,
+    )
+    driver_assets = input_hashes.get("driver_assets", {})
+    _verify_file_record(
+        repo,
+        driver_assets.get("config", {}),
+        label="reverse driver runtime config",
+        expected_path=config_path,
+    )
+
+    accepted_summary = (paths.parent_accepted / "accepted_summary.json").resolve()
+    _verify_file_record(
+        repo,
+        input_hashes.get("accepted_parent_summary", {}),
+        label="accepted parent summary",
+        expected_path=accepted_summary,
+    )
+    accepted = _read_json(accepted_summary)
+    if (
+        int(accepted.get("iter", -1)) != int(iteration)
+        or accepted.get("run") != paths.identity.run_id
+        or accepted.get("result") != accepted_model_result(iteration)
+    ):
+        raise RuntimeError("accepted parent summary identity/result mismatch")
+    material_dir = (
+        paths.parent_accepted / str(engine["material"]["directory"])
+    ).resolve()
+    if _manifest_path(repo, primal.get("material_dir")) != material_dir:
+        raise RuntimeError("canonical primal material directory mismatch")
+    primal_material_hashes = primal.get("material_sha256", {})
+    material_records = input_hashes.get("parent_material", {})
+    for component in ("kappa", "mu", "density"):
+        material_path = (
+            material_dir / str(engine["material"]["files"][component])
+        ).resolve()
+        _verify_file_record(
+            repo,
+            material_records.get(component, {}),
+            label=f"accepted parent {component}",
+            expected_path=material_path,
+        )
+        if sha256_file(material_path) != str(primal_material_hashes.get(component, "")):
+            raise RuntimeError(f"primal/accepted material SHA-256 mismatch: {component}")
+        if sha256_file(material_path) != str(
+            accepted.get("material_sha256", {}).get(material_path.name, "")
+        ):
+            raise RuntimeError(f"accepted-summary material SHA-256 mismatch: {component}")
+
+    canonical_current = (
+        paths.exact_reverse / "primal_forward" / "current_external_receiver.npy"
+    ).resolve()
+    _verify_file_record(
+        repo,
+        input_hashes.get("current_external_receiver", {}),
+        label="current external receiver",
+        expected_path=canonical_current,
+    )
+    primal_current = primal.get("current_external_receiver", {})
+    if (
+        _manifest_path(repo, primal_current.get("path")) != canonical_current
+        or sha256_file(canonical_current) != str(primal_current.get("sha256", ""))
+        or sha256_file(canonical_current)
+        != str(accepted.get("external_receiver_sha256", ""))
+    ):
+        raise RuntimeError("primal/current external receiver provenance mismatch")
+    accepted_trace = _verify_file_record(
+        repo,
+        input_hashes.get("accepted_external_receiver", {}),
+        label="accepted external receiver",
+    )
+    if sha256_file(accepted_trace) != sha256_file(canonical_current):
+        raise RuntimeError("current receiver is not the accepted external receiver")
+    true_record = input_hashes.get("true_external_receiver", {})
+    true_path = _verify_file_record(
+        repo, true_record, label="true external receiver"
+    )
+    primal_true = primal.get("true_external_receiver", {})
+    if (
+        _manifest_path(repo, primal_true.get("path")) != true_path
+        or str(primal_true.get("sha256", "")) != str(true_record.get("sha256", ""))
+        or str(true_record.get("sha256", ""))
+        != str(accepted.get("true_external_sha256", ""))
+    ):
+        raise RuntimeError("primal/TRUE external receiver provenance mismatch")
+
+    gll_path = (operator_dir / "gll_coordinates.npy").resolve()
+    weights_path = (operator_dir / "gll_weights.npy").resolve()
+    _verify_file_record(
+        repo, driver_assets.get("gll", {}), label="GLL coordinates", expected_path=gll_path
+    )
+    _verify_file_record(
+        repo,
+        driver_assets.get("weights", {}),
+        label="GLL weights",
+        expected_path=weights_path,
+    )
+    topology = driver_assets.get("topology", {})
+    if _recorded_path(repo, topology) != topology_dir.resolve():
+        raise RuntimeError("reverse topology path differs from certified bridge asset")
+    if str(topology.get("content_signature_sha256", "")) != str(
+        topology_content_signature
+    ):
+        raise RuntimeError("reverse topology identity mismatch")
+    if not operator_content_signature:
+        raise RuntimeError("certified exact-spatial-operator identity is absent")
+
+    return {
+        "result_contract": expected_result,
+        "gradient_paths": gradient_paths,
+        "canonical_primal_summary": canonical_primal,
+        "material_covector_input": canonical_reverse,
+        "optimizer_bridge_output": paths.gradient_root.resolve(),
+        "registered_physical_gradient": paths.mtilde_solve.resolve(),
+        "operator_content_signature_sha256": operator_content_signature,
+        "topology_content_signature_sha256": topology_content_signature,
+    }
 
 
 def atomic_json(path: Path, payload: dict) -> None:
@@ -80,29 +392,34 @@ def main() -> None:
     runtime = iteration_runtime_paths(
         config, args.iteration, repo_root=repo
     )
-    run = config_path.stem
-    reference_path = (
+    run = str(config["benchmark_name"])
+    engine_path = (repo / "configs" / f"{run}_iteration_engine.json").resolve()
+    engine = _read_json(engine_path)
+    paths = build_iteration_paths(
+        engine,
+        args.iteration,
+        child_iteration=args.iteration + 1,
+        repository_root=repo,
+        runtime_root=Path(runtime["runtime_root"]),
+    )
+    if paths.transition_root != Path(runtime["transition_root"]):
+        raise RuntimeError("runtime/iteration-engine transition path mismatch")
+    if paths.parent_accepted != Path(runtime["parent_workspace"]):
+        raise RuntimeError("runtime/iteration-engine parent path mismatch")
+    legacy_reference_path = (
         resolve_path(args.reference_manifest, base=repo)
         if args.reference_manifest
         else repo / "results" / run / "certified_external_reference.json"
     ).resolve()
-    _, reference = load_certified_reference(repo, run, reference_path)
-    reference_paths = common_paths(
-        repo, run, reference_manifest=reference_path
-    )
     reverse_dir = (
         resolve_path(args.reverse_dir, base=repo)
         if args.reverse_dir
-        else Path(runtime["transition_root"])
-        / "certified_iteration"
-        / "exact_reverse"
+        else paths.exact_reverse / "production_reverse"
     ).resolve()
     out_dir = (
         resolve_path(args.out_dir, base=repo)
         if args.out_dir
-        else Path(runtime["transition_root"])
-        / "certified_iteration"
-        / "optimizer_bridge"
+        else paths.gradient_root
     ).resolve()
 
     reverse_summary_path = reverse_dir / "summary.json"
@@ -110,35 +427,99 @@ def main() -> None:
         reverse_summary_path.read_text(encoding="utf-8")
     )
     reverse_result = reverse_summary.get("result")
-    allowed = {GENERIC_REVERSE_PASS}
-    if args.iteration == 0:
-        allowed.add(HISTORICAL_REVERSE_PASS)
-    if reverse_result not in allowed:
+    current_contract = None
+    if reverse_result == current_reverse_result(args.iteration):
+        asset_manifest_path = resolve_path(
+            str(engine["immutable_operator_assets"]["manifest"]), base=repo
+        )
+        asset_manifest = validate_immutable_asset_manifest(
+            asset_manifest_path,
+            expected_source_run=str(engine["historical_run_id"]),
+            repository_root=repo,
+            runtime_root=Path(runtime["runtime_root"]),
+            verify_bytes=True,
+        )
+        asset_paths = _asset_paths(
+            asset_manifest, repo=repo, runtime_root=Path(runtime["runtime_root"])
+        )
+        asset_records = {
+            str(item["asset_id"]): item for item in asset_manifest["assets"]
+        }
+        operator_dir = asset_paths["exact_spatial_operator"]
+        topology_dir = asset_paths["real_s43_compact_topology"]
+        current_contract = validate_current_reverse_contract(
+            repo=repo,
+            config_path=config_path,
+            config=config,
+            engine_path=engine_path,
+            engine=engine,
+            paths=paths,
+            iteration=args.iteration,
+            reverse_dir=reverse_dir,
+            reverse_summary=reverse_summary,
+            operator_dir=operator_dir,
+            topology_dir=topology_dir,
+            operator_content_signature=str(
+                asset_records["exact_spatial_operator"][
+                    "content_signature_sha256"
+                ]
+            ),
+            topology_content_signature=str(
+                asset_records["real_s43_compact_topology"][
+                    "content_signature_sha256"
+                ]
+            ),
+        )
+        if out_dir != paths.gradient_root.resolve():
+            raise RuntimeError("CURRENT optimizer bridge output is not canonical")
+        current_files = current_contract["gradient_paths"]
+        gradient_paths = {
+            "solid_lam": current_files["solid_lambda"],
+            "solid_mu": current_files["solid_mu"],
+            "pml_lam": current_files["pml_lambda"],
+            "pml_mu": current_files["pml_mu"],
+        }
+        gradient_source_paths = current_files
+        provenance_reference_path = current_contract["canonical_primal_summary"]
+        extra_source_paths = {
+            "iteration_engine_config": engine_path,
+            "immutable_asset_manifest": asset_manifest_path,
+        }
+    elif args.iteration == 0 and reverse_result == HISTORICAL_REVERSE_PASS:
+        _, _reference = load_certified_reference(
+            repo, run, legacy_reference_path
+        )
+        reference_paths = common_paths(
+            repo, run, reference_manifest=legacy_reference_path
+        )
+        operator_dir = Path(reference_paths["gll"]).parent
+        topology_dir = Path(reference_paths["topology"])
+        gradient_paths = {
+            name: reverse_dir / f"gradient_{name}.npy"
+            for name in ("solid_lam", "solid_mu", "pml_lam", "pml_mu")
+        }
+        gradient_source_paths = gradient_paths
+        provenance_reference_path = legacy_reference_path
+        extra_source_paths = {}
+    else:
         raise RuntimeError(
             f"reverse source is not an allowed certified PASS: {reverse_result}"
         )
-    if reverse_result == GENERIC_REVERSE_PASS:
-        if (
-            int(reverse_summary["iteration"]) != int(args.iteration)
-            or reverse_summary["transition"] != runtime["transition"]
-        ):
-            raise RuntimeError("generic reverse iteration provenance mismatch")
-        if sha256_file(reference_path) != sha256_file(
-            Path(reverse_summary["reference_manifest"])
-        ):
-            raise RuntimeError("generic reverse reference provenance mismatch")
+    bridge_result = (
+        gradient_bridge_result(args.iteration)
+        if current_contract is not None
+        else PASS_RESULT
+    )
 
-    gradient_paths = {
-        name: reverse_dir / f"gradient_{name}.npy"
-        for name in ("solid_lam", "solid_mu", "pml_lam", "pml_mu")
-    }
-    operator_dir = Path(reference_paths["gll"]).parent
-    topology_dir = Path(reference_paths["topology"])
     source_paths = {
         "config": config_path,
-        "reference_manifest": reference_path,
+        "reference_manifest": provenance_reference_path,
         "reverse_summary": reverse_summary_path,
-        **{f"gradient_{key}": value for key, value in gradient_paths.items()},
+        **{
+            f"gradient_{key}": value
+            for key, value in gradient_source_paths.items()
+        },
+        **extra_source_paths,
         "solid_P": operator_dir / "P_sem_gll_from_h5_full.npz",
         "solid_row_xyz": operator_dir / "row_xyz.npy",
         "solid_row_sem_element": operator_dir / "row_sem_element.npy",
@@ -173,10 +554,10 @@ def main() -> None:
     if summary_path.is_file():
         existing = json.loads(summary_path.read_text(encoding="utf-8"))
         if (
-            existing.get("result") == PASS_RESULT
+            existing.get("result") == bridge_result
             and existing.get("bridge_signature_sha256") == signature
         ):
-            print(f"RESULT = {PASS_RESULT}")
+            print(f"RESULT = {bridge_result}")
             print(f"OUTPUT = {out_dir}")
             print("IDEMPOTENT_REUSE = true")
             return
@@ -437,7 +818,12 @@ def main() -> None:
     np.save(solve_dir / "g_mu.npy", gradient_mu)
 
     solve_summary = {
-        "result": PASS_RESULT,
+        "schema_version": 1,
+        "result": bridge_result,
+        "run_id": run,
+        "parent_iteration": int(args.iteration),
+        "child_iteration": int(args.iteration) + 1,
+        "transition": runtime["transition"],
         "matrix": str(source_paths["mtilde"]),
         "rhs_count": int(len(rhs_lambda)),
         "interior_shape": list(interior.shape),
@@ -452,11 +838,14 @@ def main() -> None:
 
     summary = {
         "schema_version": 1,
-        "result": PASS_RESULT,
+        "result": bridge_result,
+        "run_id": run,
+        "parent_iteration": int(args.iteration),
+        "child_iteration": int(args.iteration) + 1,
         "bridge_signature_sha256": signature,
         "iteration": int(args.iteration),
         "transition": runtime["transition"],
-        "reference_manifest": str(reference_path),
+        "reference_manifest": str(provenance_reference_path),
         "reverse_source": str(reverse_dir),
         "reverse_result": reverse_result,
         "sem3d_runs": 0,
@@ -513,6 +902,30 @@ def main() -> None:
         "provenance": {
             "source_paths": {name: str(path) for name, path in source_paths.items()},
             "input_sha256": input_hashes,
+            "current_contract": (
+                None
+                if current_contract is None
+                else {
+                    "material_covector_input": str(
+                        current_contract["material_covector_input"]
+                    ),
+                    "optimizer_bridge_output": str(
+                        current_contract["optimizer_bridge_output"]
+                    ),
+                    "registered_physical_gradient": str(
+                        current_contract["registered_physical_gradient"]
+                    ),
+                    "canonical_primal_summary": str(
+                        current_contract["canonical_primal_summary"]
+                    ),
+                    "operator_content_signature_sha256": current_contract[
+                        "operator_content_signature_sha256"
+                    ],
+                    "topology_content_signature_sha256": current_contract[
+                        "topology_content_signature_sha256"
+                    ],
+                }
+            ),
         },
         "outputs": {
             "root": str(out_dir),
@@ -521,7 +934,7 @@ def main() -> None:
         },
     }
     atomic_json(summary_path, summary)
-    print(f"RESULT = {PASS_RESULT}")
+    print(f"RESULT = {bridge_result}")
     print(f"MTILDE_RESIDUAL_LAMBDA = {relative_lambda:.17e}")
     print(f"MTILDE_RESIDUAL_MU = {relative_mu:.17e}")
     print(f"OUTPUT = {out_dir}")

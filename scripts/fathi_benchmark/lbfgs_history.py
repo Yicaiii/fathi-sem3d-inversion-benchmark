@@ -22,6 +22,9 @@ from scripts.fathi_benchmark.physical_space_optimizer import (
     physical_curvature_pair,
 )
 from scripts.fathi_benchmark.iteration_context import IterationIdentity
+from scripts.fathi_benchmark.current_pipeline_contracts import (
+    registered_gradient_result,
+)
 
 
 def waiting_for_gradient_status(iteration: int) -> str:
@@ -249,6 +252,22 @@ def load_gradient_artifact(
     *,
     name: str,
 ) -> tuple[VectorPair, CanonicalOrdering, Any, dict[str, Any]]:
+    if "result" in spec:
+        iteration = int(spec.get("iteration", -1))
+        expected = registered_gradient_result(iteration)
+        if spec.get("result") != expected:
+            raise ValueError(
+                f"{name} registered result mismatch: "
+                f"{spec.get('result')!r} != {expected!r}"
+            )
+        if int(spec.get("parent_iteration", -1)) != iteration:
+            raise ValueError(f"{name} parent iteration mismatch")
+        identity = IterationIdentity.from_parent(str(spec.get("run_id", "")), iteration)
+        if (
+            int(spec.get("child_iteration", -1)) != identity.child_iteration
+            or spec.get("transition") != identity.transition_id
+        ):
+            raise ValueError(f"{name} registered transition mismatch")
     lam, lam_path = _load_vector(
         repo, spec["lambda"], name=f"{name}.lambda"
     )
@@ -262,9 +281,18 @@ def load_gradient_artifact(
     coords, coords_path = _load_coords(
         repo, spec["coordinates"], name=f"{name}.coordinates"
     )
+    active_h5 = None
+    active_h5_path = None
+    if "active_h5_indices" in spec:
+        active_h5, active_h5_path = _load_vector(
+            repo,
+            spec["active_h5_indices"],
+            name=f"{name}.active_h5_indices",
+            dtype=np.int64,
+        )
     if lam.shape != mu.shape:
         raise ValueError(f"{name} lambda/mu vector shapes differ")
-    ordering = CanonicalOrdering(active, coords)
+    ordering = CanonicalOrdering(active, coords, active_h5)
     ordering.validate(vector_size=lam.size, name=name)
     mtilde_path = _artifact_path(repo, spec["mtilde"], name=f"{name}.mtilde")
     matrix = load_npz(mtilde_path).tocsr().astype(np.float64)
@@ -272,7 +300,7 @@ def load_gradient_artifact(
         raise ValueError(f"{name} Mtilde shape mismatch: {matrix.shape}")
     if not np.all(np.isfinite(matrix.data)):
         raise ValueError(f"{name} Mtilde contains non-finite values")
-    return (lam, mu), ordering, matrix, {
+    provenance = {
         "lambda": str(lam_path),
         "lambda_sha256": str(spec["lambda"]["sha256"]),
         "mu": str(mu_path),
@@ -284,6 +312,28 @@ def load_gradient_artifact(
         "mtilde": str(mtilde_path),
         "mtilde_sha256": str(spec["mtilde"]["sha256"]),
     }
+    if active_h5_path is not None:
+        provenance.update(
+            {
+                "active_h5_indices": str(active_h5_path),
+                "active_h5_indices_sha256": str(
+                    spec["active_h5_indices"]["sha256"]
+                ),
+            }
+        )
+    if "result" in spec:
+        provenance.update(
+            {
+                "registered_result": str(spec["result"]),
+                "registration_signature_sha256": str(
+                    spec.get("registration_signature_sha256", "")
+                ),
+                "parent_accepted_model": dict(
+                    spec.get("parent_accepted_model", {})
+                ),
+            }
+        )
+    return (lam, mu), ordering, matrix, provenance
 
 
 @dataclass(frozen=True)

@@ -12,6 +12,10 @@ from pathlib import Path
 from typing import Any, Iterator, Mapping
 
 from scripts.fathi_benchmark.iteration_context import IterationPaths
+from scripts.fathi_benchmark.current_pipeline_contracts import (
+    armijo_ready_result,
+    canonical_sha256,
+)
 
 
 @dataclass(frozen=True)
@@ -102,6 +106,7 @@ def external_armijo_manifest(
     paths: IterationPaths,
     parent_objective: float,
     slope: float,
+    parent_accepted_artifact: Mapping[str, Any],
     gradient_artifact: Mapping[str, Any],
     direction_artifact: Mapping[str, Any],
     true_receiver_artifact: Mapping[str, Any],
@@ -110,6 +115,7 @@ def external_armijo_manifest(
     """Build a portable line-search input contract from context/manifests."""
 
     for name, value in (
+        ("parent_accepted_artifact", parent_accepted_artifact),
         ("gradient_artifact", gradient_artifact),
         ("direction_artifact", direction_artifact),
         ("true_receiver_artifact", true_receiver_artifact),
@@ -120,14 +126,16 @@ def external_armijo_manifest(
         raise ValueError("parent objective must be finite and non-negative")
     if not math.isfinite(slope) or slope >= 0.0:
         raise ValueError("slope must be finite and negative")
-    return {
+    payload = {
         "schema_version": 1,
+        "result": armijo_ready_result(paths.identity.parent_iteration),
         "run_id": paths.identity.run_id,
         "parent_iteration": paths.identity.parent_iteration,
         "child_iteration": paths.identity.child_iteration,
         "transition": paths.identity.transition_id,
         "parent_objective": float(parent_objective),
         "slope": float(slope),
+        "parent_accepted_artifact": dict(parent_accepted_artifact),
         "gradient_artifact": dict(gradient_artifact),
         "direction_artifact": dict(direction_artifact),
         "true_receiver_artifact": dict(true_receiver_artifact),
@@ -150,3 +158,5 @@ def external_armijo_manifest(
             for index, alpha in parameters.schedule()
         ],
     }
+    payload["input_signature_sha256"] = canonical_sha256(payload)
+    return payload
