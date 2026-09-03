@@ -450,13 +450,24 @@ def build_runtime(args: argparse.Namespace) -> dict[str, Any]:
     current = _trace(current_path, shape)
     truth = _trace(true_path, shape)
     residual = np.asarray(current - truth, dtype=np.float64)
-    objective_weights = trapezoid_weights(
-        np.arange(sample_count, dtype=np.float64) * configured_dt
+    primal_objective = primal["objective"]
+
+    objective_dt = float(
+        primal_objective.get("dt", driver.dt)
     )
+
+    _require(
+        objective_dt == float(driver.dt),
+        "parent-forward objective dt differs from certified driver dt",
+    )
+
+    objective_weights = trapezoid_weights(
+        np.arange(sample_count, dtype=np.float64) * objective_dt
+    )
+
     objective = 0.5 * float(
         np.sum(objective_weights[:, None, None] * residual * residual)
     )
-    primal_objective = primal["objective"]
     recorded_j = primal_objective.get(
         "J_external", primal_objective.get("J1")
     )
@@ -480,9 +491,24 @@ def build_runtime(args: argparse.Namespace) -> dict[str, Any]:
     checkpoints, positions = retained_checkpoint_map(
         retained_dir, sample_count, driver.signature
     )
-    _require(positions == _retained_positions(sample_count), "retained positions differ")
     _require(
-        list(primal["retained_primal"]["positions"]) == positions[1:],
+        len(positions) >= 2
+        and positions[0] == 0
+        and positions[-1] == sample_count
+        and all(
+            left < right
+            for left, right in zip(positions[:-1], positions[1:])
+        ),
+        "invalid retained checkpoint positions",
+    )
+
+    recorded_positions = [
+        int(value)
+        for value in primal["retained_primal"]["positions"]
+    ]
+
+    _require(
+        recorded_positions == positions[1:],
         "retained positions differ from primal summary",
     )
     _require(
