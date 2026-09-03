@@ -84,6 +84,10 @@ def load_certified_reference(repo, run, reference_manifest):
     reference = json.loads(
         manifest_path.read_text(encoding="utf-8")
     )
+    if not isinstance(reference, dict):
+        raise RuntimeError(
+            "certified external reference manifest must be a JSON object"
+        )
 
     if (
         reference.get("result")
@@ -149,13 +153,21 @@ def common_paths(repo, run, reference_manifest=None):
         reference["reference_root"],
     )
 
+    runtime_config_value = immutable.get("runtime_config")
+    if runtime_config_value:
+        runtime_config = _reference_path(repo, runtime_config_value)
+    else:
+        # Historical certified references predate explicit runtime-config
+        # routing. Keep their frozen configs/<run>.json behavior unchanged.
+        runtime_config = (repo / "configs" / f"{run}.json").resolve()
+
     paths = {
         "repo": repo,
         "run": run,
         "result": reference_root,
         "reference_root": reference_root,
         "reference_manifest": manifest_path,
-        "config": repo / "configs" / f"{run}.json",
+        "config": runtime_config,
         "topology": _reference_path(
             repo,
             operator["topology"],

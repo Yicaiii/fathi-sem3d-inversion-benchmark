@@ -339,14 +339,41 @@ def build_runtime(args: argparse.Namespace) -> dict[str, Any]:
         "primal material is not accepted parent material",
     )
 
-    driver_root = (
-        _resolve(repo, args.driver_root)
-        if args.driver_root
-        else true_path.parent.parent / "compat_repo"
+    reference_path = (
+        _resolve(repo, args.reference_manifest)
+        if args.reference_manifest
+        else (
+            _recorded_path(repo, primal["reference_manifest"])
+            if primal.get("reference_manifest")
+            else (repo / "results" / run_id / "certified_external_reference.json").resolve()
+        )
     )
-    driver = ExternalForwardDriver(
-        driver_root, run_id, material_dir, batch_size=args.batch_size
-    )
+    _require(reference_path.is_file(), f"missing certified reference: {reference_path}")
+    recorded_reference_sha = primal.get("reference_manifest_sha256")
+    if recorded_reference_sha:
+        _require(
+            sha256_file(reference_path) == str(recorded_reference_sha),
+            "certified reference differs from retained primal",
+        )
+
+    if args.driver_root:
+        # Explicit compatibility override for archived/current-T052 certification
+        # reproductions. New CURRENT iterations must use the run-level certified
+        # reference and repository root instead of a transition-local compat_repo.
+        driver = ExternalForwardDriver(
+            _resolve(repo, args.driver_root),
+            run_id,
+            material_dir,
+            batch_size=args.batch_size,
+        )
+    else:
+        driver = ExternalForwardDriver(
+            repo,
+            run_id,
+            material_dir,
+            batch_size=args.batch_size,
+            reference_manifest=reference_path,
+        )
     _require(
         driver.signature == str(primal["driver_signature_sha256"]),
         "driver signature differs from retained primal",
@@ -618,6 +645,7 @@ def main() -> None:
     parser.add_argument("--retained-primal-dir")
     parser.add_argument("--primal-summary")
     parser.add_argument("--accepted-summary")
+    parser.add_argument("--reference-manifest")
     parser.add_argument("--driver-root")
     parser.add_argument("--output-dir")
     parser.add_argument("--batch-size", type=int, default=2048)

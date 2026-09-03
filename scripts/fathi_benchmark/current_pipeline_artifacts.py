@@ -732,10 +732,13 @@ def evaluate_candidate_external(
     trial_dir.mkdir(parents=True, exist_ok=True)
     current_path = trial_dir / "candidate_external_receiver.npy"
     checkpoint = trial_dir / "checkpoint" / "candidate_latest.npz"
+    # run_external_forward has a fixed primal-state label contract.  The
+    # output file may be a candidate receiver, but the state label itself
+    # remains ``primal`` unless tangent directions are explicitly supplied.
     run_external_forward(
         driver,
         sample_count,
-        {"candidate": current_path},
+        {"primal": current_path},
         checkpoint,
         checkpoint_interval=int(checkpoint_interval),
     )
