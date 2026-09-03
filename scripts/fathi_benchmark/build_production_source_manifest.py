@@ -14,8 +14,11 @@ from pathlib import Path, PurePosixPath
 DEFAULT_ROOTS = (
     "configs/fathi_s43_repro_p20_t052_runtime.json",
     "configs/fathi_s43_repro_p20_t052_iteration_engine.json",
+    "configs/fathi_s43_repro_p20_t052_immutable_assets.json",
     "scripts/fathi_benchmark/run_current_iteration.sh",
     "scripts/fathi_benchmark/run_current_iteration.py",
+    "scripts/fathi_benchmark/audit_current_iteration.py",
+    "scripts/fathi_benchmark/audit_current_iteration.sh",
     "scripts/fathi_benchmark/current_pipeline_artifacts.py",
     "scripts/fathi_benchmark/build_current_certified_external_reference.py",
     "scripts/fathi_benchmark/run_certified_external_parent_forward.py",
@@ -153,7 +156,7 @@ def python_import_refs(repo: Path, rel: str) -> set[str]:
 
 def textual_local_refs(repo: Path, rel: str) -> set[str]:
     path = repo / rel
-    if path.suffix not in {".py", ".sh", ".md"}:
+    if path.suffix not in {".py", ".sh"}:
         return set()
     try:
         text = path.read_text(encoding="utf-8")
